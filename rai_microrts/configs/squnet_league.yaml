@@ -1,0 +1,18 @@
+# League training with ELO-based prioritized opponent selection
+#
+# Usage:
+#   python train.py --algo ppo --env Microrts-squnet-map16-selfplay
+
+algo: ppo
+env: Microrts-squnet-map16-selfplay
+seed: 1
+
+env_hyperparams:
+  league_kwargs:
+    priority_mode: "closest"        # prefer opponents with ~50% win-rate
+    # priority_mode: "hardest"      # always pick strongest opponent
+    target_win_rate_min: 0.3
+    target_win_rate_max: 0.7
+    exploration_rate: 0.1           # 10% random opponent selection
+    elo_k: 32.0                     # ELO K-factor
+    min_matches_for_elo: 5          # matches before ELO is considered reliable

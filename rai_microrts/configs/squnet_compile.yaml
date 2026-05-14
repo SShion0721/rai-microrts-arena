@@ -1,0 +1,12 @@
+# torch.compile-only config — simplest way to get 1.2-2x speedup
+#
+# Usage:
+#   python train.py --algo ppo --env Microrts-squnet-map16-selfplay
+
+algo: ppo
+env: Microrts-squnet-map16-selfplay
+seed: 1
+
+device_hyperparams:
+  torch_compile: true
+  compile_mode: "reduce-overhead"

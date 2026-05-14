@@ -1,0 +1,545 @@
+CartPole-v1: &cartpole-defaults
+  n_timesteps: !!float 1e5
+  env_hyperparams: &cartpole-env-defaults
+    n_envs: 8
+  algo_hyperparams: &cartpole-algo-defaults
+    batch_size: 256
+    n_epochs: 20
+    ent_coef: 0.0
+    learning_rate: 0.001
+    clip_range: 0.2
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: 0.001
+        clip_range: 0.2
+      - learning_rate: 0
+        clip_range: 0
+  eval_hyperparams:
+    step_freq: !!float 2.5e4
+  rollout_hyperparams: &cartpole-rollout-defaults
+    n_steps: 32
+    gae_lambda: 0.8
+    gamma: 0.98
+
+CartPole-v0:
+  <<: *cartpole-defaults
+  n_timesteps: !!float 5e4
+
+MountainCar-v0:
+  n_timesteps: !!float 1e6
+  env_hyperparams:
+    normalize: true
+    n_envs: 16
+  rollout_hyperparams:
+    n_steps: 16
+    gae_lambda: 0.98
+    gamma: 0.99
+  algo_hyperparams:
+    n_epochs: 4
+    ent_coef: 0.0
+
+MountainCarContinuous-v0:
+  n_timesteps: !!float 1e5
+  env_hyperparams:
+    normalize: true
+    n_envs: 4
+  # policy_hyperparams:
+  #   init_layers_orthogonal: false
+  #   log_std_init: -3.29
+  #   use_sde: true
+  rollout_hyperparams:
+    n_steps: 512
+    gae_lambda: 0.9
+  algo_hyperparams:
+    batch_size: 256
+    n_epochs: 10
+    learning_rate: !!float 7.77e-5
+    ent_coef: 0.01 # 0.00429
+    clip_range: 0.1
+    max_grad_norm: 5
+    vf_coef: 0.19
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - ent_coef: 0.01
+      - ent_coef: 0
+  eval_hyperparams:
+    step_freq: 5000
+
+Acrobot-v1:
+  n_timesteps: !!float 1e6
+  env_hyperparams:
+    n_envs: 16
+    normalize: true
+  rollout_hyperparams:
+    n_steps: 256
+    gae_lambda: 0.94
+    gamma: 0.99
+  algo_hyperparams:
+    n_epochs: 4
+    ent_coef: 0.0
+
+LunarLander-v2: &lunarlander
+  n_timesteps: !!float 4e6
+  env_hyperparams: &lunarlander-env
+    n_envs: 16
+  rollout_hyperparams:
+    n_steps: 1024
+    gae_lambda: 0.98
+    gamma: 0.999
+  algo_hyperparams: &lunarlander-algo
+    batch_size: 64
+    n_epochs: 4
+    learning_rate: !!float 5e-4
+    clip_range: 0.2
+    ent_coef: 0.01
+    normalize_advantage: false
+  eval_hyperparams: &lunarlander-eval
+    step_freq: 250000
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 5e-4
+        clip_range: 0.2
+      - learning_rate: 0
+        clip_range: 0
+
+LunarLander-v2-lr-by-kl: &lunarlander-lr-by-kl
+  <<: *lunarlander
+  env_id: LunarLander-v2
+  env_hyperparams:
+    <<: *lunarlander-env
+    normalize: true
+    normalize_kwargs:
+      gamma_reward: 0.999
+  algo_hyperparams: &lunarlander-lr-by-kl-algo
+    <<: *lunarlander-algo
+    max_grad_norm: 1.0
+    vf_coef: 2.0
+    normalize_advantage: true
+    learning_rate: !!float 1e-3
+  lr_by_kl_kwargs:
+    target_kl: 0.01
+    min_decrease_fraction: 0.9
+    max_increase_fraction: 1.05
+    no_increase_on_max_grad_norm: true
+  hyperparam_transitions_kwargs:
+    durations:
+      - 0
+      - 1.0
+      - 0
+    phases:
+      - target_kl: 0.02
+        ent_coef: 0.01
+      - target_kl: 0.001
+        ent_coef: 0
+
+BipedalWalker-v3:
+  n_timesteps: !!float 10e6
+  env_hyperparams:
+    n_envs: 16
+    normalize: true
+  rollout_hyperparams:
+    n_steps: 2048
+    gae_lambda: 0.95
+    gamma: 0.99
+  algo_hyperparams:
+    batch_size: 64
+    n_epochs: 10
+    ent_coef: 0.001
+    learning_rate: !!float 2.5e-4
+    clip_range: 0.2
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 2.5e-4
+        clip_range: 0.2
+      - learning_rate: 0
+        clip_range: 0
+
+CarRacing-v2: &carracing-defaults
+  n_timesteps: !!float 4e6
+  env_hyperparams:
+    n_envs: 8
+    frame_stack: 2
+    normalize: true
+    normalize_kwargs:
+      norm_obs: false
+      norm_reward: true
+  policy_hyperparams: &carracing-policy-defaults
+    use_sde: true
+    log_std_init: -2
+    init_layers_orthogonal: false
+    activation_fn: relu
+    share_features_extractor: false
+    cnn_flatten_dim: 256
+    hidden_sizes: [256]
+  rollout_hyperparams:
+    n_steps: 512
+    sde_sample_freq: 4
+    gamma: 0.99
+    gae_lambda: 0.95
+  algo_hyperparams:
+    batch_size: 128
+    n_epochs: 10
+    learning_rate: !!float 1e-4
+    ent_coef: 0.0
+    max_grad_norm: 0.5
+    vf_coef: 0.5
+    clip_range: 0.2
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 1e-4
+      - learning_rate: 0
+
+impala-CarRacing-v2:
+  <<: *carracing-defaults
+  env_id: CarRacing-v2
+  policy_hyperparams:
+    <<: *carracing-policy-defaults
+    cnn_style: impala
+    init_layers_orthogonal: true
+    cnn_layers_init_orthogonal: false
+    hidden_sizes: []
+
+CarRacing-v2-lr-by-kl: &carracing-lr-by-kl
+  <<: *carracing-defaults
+  env_id: CarRacing-v2
+  lr_by_kl_kwargs:
+    target_kl: 0.01
+    min_decrease_fraction: 0.9
+    max_increase_fraction: 1.05
+  hyperparam_transitions_kwargs:
+    durations:
+      - 0.8
+      - 0.2
+      - 0
+    phases:
+      - target_kl: 0.01
+      - target_kl: 0.001
+
+# BreakoutNoFrameskip-v4
+# PongNoFrameskip-v4
+# SpaceInvadersNoFrameskip-v4
+# QbertNoFrameskip-v4
+_atari: &atari-defaults
+  n_timesteps: !!float 1e7
+  env_hyperparams: &atari-env-defaults
+    n_envs: 8
+    frame_stack: 4
+    no_reward_timeout_steps: 1000
+    no_reward_fire_steps: 500
+    vec_env_class: async
+  policy_hyperparams: &atari-policy-defaults
+    activation_fn: relu
+  rollout_hyperparams: &atari-rollout-defaults
+    n_steps: 128
+  algo_hyperparams: &atari-algo-defaults
+    batch_size: 256
+    n_epochs: 4
+    learning_rate: !!float 2.5e-4
+    clip_range: 0.1
+    vf_coef: 0.5
+    ent_coef: 0.01
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 2.5e-4
+        clip_range: 0.1
+      - learning_rate: 0
+        clip_range: 0
+  eval_hyperparams: &atari-eval-defaults
+    deterministic: false
+    max_video_length: 18000
+    step_freq: !!float 5e5
+
+_norm-rewards-atari: &norm-rewards-atari-default
+  <<: *atari-defaults
+  env_hyperparams:
+    <<: *atari-env-defaults
+    clip_atari_rewards: false
+    normalize: true
+    normalize_kwargs:
+      norm_obs: false
+      norm_reward: true
+
+norm-rewards-BreakoutNoFrameskip-v4:
+  <<: *norm-rewards-atari-default
+  env_id: BreakoutNoFrameskip-v4
+
+debug-PongNoFrameskip-v4:
+  <<: *atari-defaults
+  device: cpu
+  env_id: PongNoFrameskip-v4
+  env_hyperparams:
+    <<: *atari-env-defaults
+    vec_env_class: sync
+
+_impala-atari: &impala-atari-defaults
+  <<: *atari-defaults
+  policy_hyperparams:
+    <<: *atari-policy-defaults
+    cnn_style: impala
+    cnn_flatten_dim: 256
+    init_layers_orthogonal: true
+    cnn_layers_init_orthogonal: false
+
+impala-PongNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: PongNoFrameskip-v4
+
+impala-BreakoutNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: BreakoutNoFrameskip-v4
+
+impala-SpaceInvadersNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: SpaceInvadersNoFrameskip-v4
+
+impala-QbertNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: QbertNoFrameskip-v4
+
+_atari-lr-by-kl: &atari-lr-by-kl
+  <<: *atari-defaults
+  lr_by_kl_kwargs:
+    target_kl: 0.01
+    min_decrease_fraction: 0.9
+    max_increase_fraction: 1.05
+    no_increase_on_max_grad_norm: true
+  hyperparam_transitions_kwargs:
+    durations:
+      - 0.8
+      - 0.2
+      - 0
+    phases:
+      - target_kl: 0.01
+      - target_kl: 0.001
+
+PongNoFrameskip-v4-lr-by-kl:
+  <<: *atari-lr-by-kl
+  env_id: PongNoFrameskip-v4
+
+BreakoutNoFrameskip-v4-lr-by-kl:
+  <<: *atari-lr-by-kl
+  env_id: BreakoutNoFrameskip-v4
+  algo_hyperparams:
+    <<: *atari-algo-defaults
+    learning_rate: !!float 5e-4
+
+SpaceInvadersNoFrameskip-v4-lr-by-kl:
+  <<: *atari-lr-by-kl
+  env_id: SpaceInvadersNoFrameskip-v4
+
+QbertNoFrameskip-v4-lr-by-kl:
+  <<: *atari-lr-by-kl
+  env_id: QbertNoFrameskip-v4
+
+HalfCheetah-v4: &mujoco-defaults
+  n_timesteps: !!float 1e6
+  env_hyperparams: &mujoco-env-defaults
+    n_envs: 1
+    normalize: true
+  policy_hyperparams: &mujoco-policy-defaults
+    pi_hidden_sizes: [256, 256]
+    v_hidden_sizes: [256, 256]
+    activation_fn: relu
+    log_std_init: -2
+    init_layers_orthogonal: false
+  rollout_hyperparams: &mujoco-rollout-defaults
+    n_steps: 512
+    gamma: 0.98
+    gae_lambda: 0.92
+  algo_hyperparams: &mujoco-algo-defaults
+    batch_size: 64
+    n_epochs: 20
+    ent_coef: 0.000401762
+    max_grad_norm: 0.8
+    vf_coef: 0.58096
+    learning_rate: !!float 2.0633e-05
+    clip_range: 0.1
+
+HalfCheetah-v4-lr-by-kl: &mujoco-lr-by-kl
+  <<: *mujoco-defaults
+  env_id: HalfCheetah-v4
+  lr_by_kl_kwargs: &mujoco-lr-by-kl-kwargs
+    target_kl: 0.01
+    min_decrease_fraction: 0.9
+    max_increase_fraction: 1.05
+  hyperparam_transitions_kwargs:
+    durations:
+      - 0.8
+      - 0.2
+      - 0
+    phases:
+      - target_kl: 0.01
+      - target_kl: 0.001
+
+Ant-v4:
+  <<: *mujoco-defaults
+
+Ant-v4-lr-by-kl: &ant-lr-by-kl
+  <<: *mujoco-lr-by-kl
+  env_id: Ant-v4
+
+Walker2d-v4: &walker2d
+  <<: *mujoco-defaults
+  rollout_hyperparams: &walker2d-rollout
+    <<: *mujoco-rollout-defaults
+    gamma: 0.99
+    gae_lambda: 0.95
+  algo_hyperparams: &walker2d-algo
+    <<: *mujoco-algo-defaults
+    batch_size: 32
+    learning_rate: 5.05041e-05
+    ent_coef: 0.000585045
+    clip_range: 0.1
+    n_epochs: 20
+    max_grad_norm: 1
+    vf_coef: 0.871923
+
+Walker2d-v4-lr-by-kl: &walker2d-lr-by-kl
+  <<: *mujoco-lr-by-kl
+  env_id: Walker2d-v4
+  algo_hyperparams: &walker2d-lr-by-kl-algo
+    <<: *walker2d-algo
+
+Hopper-v4: &hopper
+  <<: *mujoco-defaults
+  rollout_hyperparams: &hopper-rollout
+    <<: *mujoco-rollout-defaults
+    gamma: 0.999
+    gae_lambda: 0.99
+  algo_hyperparams: &hopper-algo
+    <<: *mujoco-algo-defaults
+    batch_size: 32
+    learning_rate: 9.80828e-05
+    ent_coef: 0.00229519
+    clip_range: 0.2
+    n_epochs: 5
+    max_grad_norm: 0.7
+    vf_coef: 0.835671
+
+Hopper-v4-lr-by-kl: &hopper-lr-by-kl
+  <<: *mujoco-lr-by-kl
+  env_id: Hopper-v4
+  algo_hyperparams: &hopper-lr-by-kl-algo
+    <<: *hopper-algo
+
+_procgen: &procgen-defaults
+  env_hyperparams: &procgen-env-defaults
+    env_type: procgen
+    n_envs: 64
+    # grayscale: false
+    # frame_stack: 4
+    normalize: true # procgen only normalizes reward
+    make_kwargs: &procgen-make-kwargs-defaults
+      num_threads: 8
+  policy_hyperparams: &procgen-policy-defaults
+    activation_fn: relu
+    cnn_style: impala
+    cnn_flatten_dim: 256
+    init_layers_orthogonal: true
+    cnn_layers_init_orthogonal: false
+  rollout_hyperparams: &procgen-rollout-defaults
+    n_steps: 256
+    gamma: 0.999
+    gae_lambda: 0.95
+  algo_hyperparams: &procgen-algo-defaults
+    batch_size: 2048
+    n_epochs: 3
+    ent_coef: 0.01
+    clip_range: 0.2
+    clip_range_vf: 0.2
+    learning_rate: !!float 5e-4
+    vf_coef: 0.5
+  eval_hyperparams: &procgen-eval-defaults
+    ignore_first_episode: true
+    # deterministic: false
+    step_freq: !!float 1e5
+
+_procgen-easy: &procgen-easy-defaults
+  <<: *procgen-defaults
+  n_timesteps: !!float 25e6
+  env_hyperparams: &procgen-easy-env-defaults
+    <<: *procgen-env-defaults
+    make_kwargs:
+      <<: *procgen-make-kwargs-defaults
+      distribution_mode: easy
+
+procgen-coinrun-easy: &coinrun-easy-defaults
+  <<: *procgen-easy-defaults
+  env_id: coinrun
+
+debug-procgen-coinrun:
+  <<: *coinrun-easy-defaults
+  device: cpu
+
+procgen-starpilot-easy:
+  <<: *procgen-easy-defaults
+  env_id: starpilot
+
+procgen-bossfight-easy:
+  <<: *procgen-easy-defaults
+  env_id: bossfight
+
+procgen-bigfish-easy:
+  <<: *procgen-easy-defaults
+  env_id: bigfish
+
+_procgen-hard: &procgen-hard-defaults
+  <<: *procgen-defaults
+  n_timesteps: !!float 200e6
+  env_hyperparams: &procgen-hard-env-defaults
+    <<: *procgen-env-defaults
+    n_envs: 256
+    make_kwargs:
+      <<: *procgen-make-kwargs-defaults
+      distribution_mode: hard
+  algo_hyperparams: &procgen-hard-algo-defaults
+    <<: *procgen-algo-defaults
+    batch_size: 8192
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 5e-4
+        clip_range: 0.2
+      - learning_rate: 0
+        clip_range: 0
+  eval_hyperparams:
+    <<: *procgen-eval-defaults
+    step_freq: !!float 5e5
+
+procgen-starpilot-hard: &procgen-starpilot-hard-defaults
+  <<: *procgen-hard-defaults
+  env_id: starpilot
+
+procgen-starpilot-hard-2xIMPALA:
+  <<: *procgen-starpilot-hard-defaults
+  policy_hyperparams:
+    <<: *procgen-policy-defaults
+    impala_channels: [32, 64, 64]
+  algo_hyperparams:
+    <<: *procgen-hard-algo-defaults
+    learning_rate: !!float 3.3e-4
+
+procgen-starpilot-hard-2xIMPALA-fat:
+  <<: *procgen-starpilot-hard-defaults
+  policy_hyperparams:
+    <<: *procgen-policy-defaults
+    impala_channels: [32, 64, 64]
+    cnn_flatten_dim: 512
+  algo_hyperparams:
+    <<: *procgen-hard-algo-defaults
+    learning_rate: !!float 2.5e-4
+
+procgen-starpilot-hard-4xIMPALA:
+  <<: *procgen-starpilot-hard-defaults
+  policy_hyperparams:
+    <<: *procgen-policy-defaults
+    impala_channels: [64, 128, 128]
+  algo_hyperparams:
+    <<: *procgen-hard-algo-defaults
+    learning_rate: !!float 2.1e-4

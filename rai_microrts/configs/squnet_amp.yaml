@@ -1,0 +1,13 @@
+# Mixed precision config — 1.5-2x speedup, less GPU memory
+#
+# Usage:
+#   python train.py --algo ppo --env Microrts-squnet-map16-selfplay
+
+algo: ppo
+env: Microrts-squnet-map16-selfplay
+seed: 1
+
+algo_hyperparams:
+  autocast_loss: true
+  autocast_amp_dtype: "bfloat16"   # safe, same dynamic range as float32
+  # For GPUs without bf16 support, use: "float16"

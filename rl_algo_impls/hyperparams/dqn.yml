@@ -1,0 +1,136 @@
+CartPole-v1: &cartpole-defaults
+  n_timesteps: !!float 5e4
+  env_hyperparams:
+    rolling_length: 50
+  policy_hyperparams:
+    hidden_sizes: [256, 256]
+  algo_hyperparams:
+    learning_rate: !!float 2.3e-3
+    batch_size: 64
+    target_update_interval: 10
+    gradient_steps: 128
+    exploration_fraction: 0.16
+    exploration_final_eps: 0.04
+  rollout_hyperparams:
+    buffer_size: 100000
+    learning_starts: 1000
+    train_freq: 256
+    gamma: 0.99
+  eval_hyperparams:
+    step_freq: !!float 1e4
+
+CartPole-v0:
+  <<: *cartpole-defaults
+  n_timesteps: !!float 4e4
+
+MountainCar-v0:
+  n_timesteps: !!float 1.2e5
+  env_hyperparams:
+    rolling_length: 50
+  policy_hyperparams:
+    hidden_sizes: [256, 256]
+  algo_hyperparams:
+    learning_rate: !!float 4e-3
+    batch_size: 128
+    target_update_interval: 600
+    gradient_steps: 8
+    exploration_fraction: 0.2
+    exploration_final_eps: 0.07
+  rollout_hyperparams:
+    buffer_size: 10000
+    learning_starts: 1000
+    train_freq: 16
+    gamma: 0.98
+
+Acrobot-v1:
+  n_timesteps: !!float 1e5
+  env_hyperparams:
+    rolling_length: 50
+  policy_hyperparams:
+    hidden_sizes: [256, 256]
+  algo_hyperparams:
+    learning_rate: !!float 6.3e-4
+    batch_size: 128
+    target_update_interval: 250
+    gradient_steps: -1
+    exploration_fraction: 0.12
+    exploration_final_eps: 0.1
+  rollout_hyperparams:
+    buffer_size: 50000
+    learning_starts: 0
+    train_freq: 4
+    gamma: 0.99
+
+LunarLander-v2:
+  n_timesteps: !!float 5e5
+  env_hyperparams:
+    rolling_length: 50
+  policy_hyperparams:
+    hidden_sizes: [256, 256]
+  algo_hyperparams:
+    learning_rate: !!float 1e-4
+    batch_size: 256
+    target_update_interval: 250
+    gradient_steps: -1
+    exploration_fraction: 0.12
+    exploration_final_eps: 0.1
+    max_grad_norm: 0.5
+  rollout_hyperparams:
+    buffer_size: 100000
+    learning_starts: 10000
+    train_freq: 8
+    gamma: 0.99
+  eval_hyperparams:
+    step_freq: 25_000
+
+_atari: &atari-defaults
+  n_timesteps: !!float 1e7
+  env_hyperparams:
+    frame_stack: 4
+    no_reward_timeout_steps: 1_000
+    no_reward_fire_steps: 500
+    n_envs: 8
+    vec_env_class: async
+  algo_hyperparams:
+    learning_rate: !!float 1e-4
+    batch_size: 32
+    target_update_interval: 1000
+    gradient_steps: 2
+    exploration_fraction: 0.1
+    exploration_final_eps: 0.01
+  rollout_hyperparams:
+    buffer_size: 100000
+    learning_starts: 100000
+    train_freq: 8
+  eval_hyperparams:
+    deterministic: false
+    max_video_length: 18000
+
+PongNoFrameskip-v4:
+  <<: *atari-defaults
+  n_timesteps: !!float 2.5e6
+
+_impala-atari: &impala-atari-defaults
+  <<: *atari-defaults
+  policy_hyperparams:
+    cnn_style: impala
+    cnn_flatten_dim: 256
+    init_layers_orthogonal: true
+    cnn_layers_init_orthogonal: false
+
+impala-PongNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: PongNoFrameskip-v4
+  n_timesteps: !!float 2.5e6
+
+impala-BreakoutNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: BreakoutNoFrameskip-v4
+
+impala-SpaceInvadersNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: SpaceInvadersNoFrameskip-v4
+
+impala-QbertNoFrameskip-v4:
+  <<: *impala-atari-defaults
+  env_id: QbertNoFrameskip-v4

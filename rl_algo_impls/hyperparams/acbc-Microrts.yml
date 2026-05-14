@@ -1,0 +1,404 @@
+Microrts-squnet-d16-128-iMayari: &microrts-squnet-d16-128-imayari
+  n_timesteps: !!float 100e6
+  additional_keys_to_log:
+    - microrts_stats
+    - microrts_results
+    - results
+    - action_mask_stats
+  algo_hyperparams: &microrts-squnet-d16-128-imayari-algo
+    learning_rate: 1.6e-04
+    batch_size: 3072
+    n_epochs: 2
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    gradient_accumulation: false
+    scale_loss_by_num_actions: true
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: 1.6e-04
+      - learning_rate: 0
+  env_hyperparams: &microrts-squnet-d16-128-imayari-env
+    additional_win_loss_reward: false
+    bots:
+      coacAI: 12
+      lightRushAI: 12
+      mayari: 6
+    env_type: microrts_bots
+    make_kwargs: &microrts-squnet-d16-128-imayari-env-make-kwargs
+      max_steps: 4000
+      reward_weight:
+        - 1.0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+      non_deterministic: true
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/16x16/EightBasesWorkers16x16.xml
+    n_envs: 36
+    reference_bot: mayari
+    score_reward_kwargs: null
+    self_play_kwargs: null
+    valid_sizes:
+      - 16
+  env_id: Microrts-squnet-map16
+  eval_hyperparams: &microrts-squnet-d16-128-imayari-eval
+    deterministic: false
+    env_overrides: &microrts-squnet-d16-128-imayari-eval-env-overrides
+      additional_win_loss_reward: false
+      bots:
+        coacAI: 2
+        droplet: 2
+        guidedRojoA3N: 2
+        izanagi: 2
+        lightRushAI: 2
+        mayari: 2
+        mixedBot: 2
+        naiveMCTSAI: 2
+        passiveAI: 2
+        randomAI: 2
+        randomBiasedAI: 2
+        rojo: 2
+        tiamat: 2
+        workerRushAI: 2
+      env_type: microrts
+      make_kwargs: &microrts-squnet-d16-128-imayari-eval-env-make-kwargs
+        bot_envs_alternate_player: false
+        map_paths:
+          - maps/16x16/basesWorkers16x16A.xml
+        max_steps: 4000
+        num_selfplay_envs: 0
+        render_theme: 2
+        reward_weight:
+          - 1.0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+      map_paths: []
+      n_envs: 28
+      score_reward_kwargs: {}
+      self_play_kwargs: {}
+    max_video_length: 4000
+    n_episodes: 28
+    score_function: mean
+    skip_evaluate_at_start: true
+    step_freq: 1000000.0
+  policy_hyperparams: &microrts-squnet-d16-128-imayari-policy
+    activation_fn: relu
+    actor_head_style: squeeze_unet
+    additional_critic_activation_functions: []
+    channels_per_level:
+      - 128
+      - 128
+      - 128
+    cnn_flatten_dim: 256
+    cnn_style: microrts
+    decoder_residual_blocks_per_level:
+      - 2
+      - 3
+    deconv_strides_per_level:
+      - - 2
+        - 2
+      - - 2
+        - 2
+    encoder_residual_blocks_per_level:
+      - 3
+      - 2
+      - 4
+    output_activation_fn: tanh
+    strides_per_level:
+      - 4
+      - 4
+    subaction_mask:
+      0:
+        1: 1
+        2: 2
+        3: 3
+        4: 4
+        5: 4
+        6: 5
+  rollout_hyperparams: &microrts-squnet-d16-128-imayari-rollout
+    n_steps: 512
+    include_logp: false
+    gamma: 0.999
+    gae_lambda: 0.99
+  rollout_type: reference
+
+Microrts-squnet-d16-128-iMayari-nondeterministic:
+  &microrts-squnet-d16-128-imayari-non-deterministic
+  <<: *microrts-squnet-d16-128-imayari
+  env_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-env
+    make_kwargs:
+      <<: *microrts-squnet-d16-128-imayari-env-make-kwargs
+      non_deterministic: true
+
+Microrts-squnet-d16-128-iMayari-batch: &microrts-squnet-d16-128-imayari-batch
+  <<: *microrts-squnet-d16-128-imayari
+  algo_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-algo
+    batch_size: 3456
+    n_epochs: 1
+  rollout_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-rollout
+    n_steps: 96
+
+Microrts-squnet-d16-128-iMayari-map32: &microrts-squnet-d16-128-imayari-map32
+  <<: *microrts-squnet-d16-128-imayari
+  env_hyperparams: &microrts-squnet-d16-128-imayari-map32-env
+    <<: *microrts-squnet-d16-128-imayari-env
+    n_envs: 24
+    map_paths:
+      - maps/DoubleGame24x24.xml
+      - maps/BWDistantResources32x32.xml
+      - maps/chambers32x32.xml
+    make_kwargs: &microrts-squnet-d16-128-imayari-map32-env-make-kwargs
+      <<: *microrts-squnet-d16-128-imayari-env-make-kwargs
+      max_steps: 6000
+    bots:
+      mayari: 6
+      lightRushAI: 6
+      coacAI: 6
+    valid_sizes: [32]
+  rollout_hyperparams: &microrts-squnet-d16-128-imayari-map32-rollout
+    <<: *microrts-squnet-d16-128-imayari-rollout
+    full_batch_off_accelerator: true
+    gamma: 0.9996
+    gae_lambda: 0.99
+  eval_hyperparams: &microrts-squnet-d16-128-imayari-map32-eval
+    <<: *microrts-squnet-d16-128-imayari-eval
+    step_freq: !!float 5e6
+    env_overrides: &microrts-squnet-d16-128-imayari-map32-eval-env-overrides
+      <<: *microrts-squnet-d16-128-imayari-eval-env-overrides
+      make_kwargs: &microrts-squnet-d16-128-imayari-map32-eval-env-make-kwargs
+        <<: *microrts-squnet-d16-128-imayari-eval-env-make-kwargs
+        max_steps: 6000
+        map_paths: [maps/BWDistantResources32x32.xml]
+  algo_hyperparams: &microrts-squnet-d16-128-imayari-map32-algo
+    <<: *microrts-squnet-d16-128-imayari-algo
+    batch_size: 768
+  hyperparam_transitions_kwargs:
+    interpolate_method: cosine
+    phases:
+      - learning_rate: !!float 1e-5
+      - learning_rate: !!float 8e-5
+      - learning_rate: !!float 1e-6
+    durations:
+      - 0
+      - 0.05
+      - 0.05
+      - 0.85
+      - 0.05
+
+Microrts-squnet-d16-128-iMayari-map64: &microrts-squnet-d16-128-imayari-map64
+  <<: *microrts-squnet-d16-128-imayari-map32
+  env_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-map32-env
+    n_envs: 24
+    map_paths:
+      - maps/BroodWar/(4)BloodBath.scmB.xml # 64x64
+      - maps/BroodWar/(4)BloodBath.scmE.xml # 64x64
+    make_kwargs:
+      <<: *microrts-squnet-d16-128-imayari-map32-env-make-kwargs
+      max_steps: 8000
+    bots:
+      mayari: 4
+      lightRushAI: 8
+      coacAI: 8
+    valid_sizes: [64]
+  eval_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-map32-eval
+    step_freq: !!float 10e6
+    env_overrides:
+      <<: *microrts-squnet-d16-128-imayari-map32-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-squnet-d16-128-imayari-map32-eval-env-make-kwargs
+        max_steps: 8000
+        map_paths: [maps/BroodWar/(4)BloodBath.scmB.xml]
+  rollout_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-map32-rollout
+    gamma: 0.9999
+    gae_lambda: 0.99
+  algo_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-map32-algo
+    batch_size: 192
+    gradient_accumulation: true
+
+Microrts-squnet-d16-128-iMayari-map64-from32:
+  &microrts-squnet-d16-128-imayari-map64-from32
+  <<: *microrts-squnet-d16-128-imayari-map64
+  policy_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-policy
+    load_run_path: sgoodfriend/rl-algo-impls-microrts-2023/16o4391r
+    load_run_path_best: true
+
+Microrts-short-squnet-map64: &microrts-short-squnet-map64
+  <<: *microrts-squnet-d16-128-imayari-map64
+  policy_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-policy
+    encoder_residual_blocks_per_level: [2, 2, 4]
+    decoder_residual_blocks_per_level: [2, 2]
+
+Microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck:
+  &microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck
+  additional_keys_to_log:
+    - microrts_stats
+    - microrts_results
+    - results
+    - action_mask_stats
+  algo_hyperparams:
+    &microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck-algo
+    batch_size: 3072
+    gradient_accumulation: false
+    learning_rate: 0.00016
+    max_grad_norm: 0.5
+    n_epochs: 2
+    scale_loss_by_num_actions: true
+    vf_coef: 0.5
+    optim_amsgrad: false
+    optim_eps: 1.0e-07
+  device_hyperparams:
+    set_float32_matmul_precision: high
+    use_deterministic_algorithms: false
+  env_hyperparams:
+    &microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck-env
+    additional_win_loss_reward: false
+    bots:
+      randomBiasedAI: 12
+    env_type: microrts_bots
+    make_kwargs:
+      map_paths:
+        - maps/10x10/basesTwoWorkers10x10.xml
+      max_steps: 2000
+      reward_weight:
+        - 10.0
+        - 1.0
+        - 1.0
+        - 0.2
+        - 1.0
+        - 4.0
+        - 4.0
+        - 4.0
+        - 0
+    n_envs: 24
+    reference_bot: randomBiasedAI
+    valid_sizes:
+      - 10
+  env_id: Microrts-baseWorkers10x10
+  eval_hyperparams:
+    deterministic: false
+    env_overrides:
+      additional_win_loss_reward: false
+      bots:
+        randomBiasedAI: 8
+      env_type: microrts
+      make_kwargs:
+        map_paths:
+          - maps/10x10/basesTwoWorkers10x10.xml
+        max_steps: 2000
+        reward_weight:
+          - 1.0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+      n_envs: 8
+    max_video_length: 2000
+    n_episodes: 8
+    only_checkpoint_best_policies: true
+    score_function: mean
+    skip_evaluate_at_start: true
+    step_freq: 500000.0
+  hyperparam_transitions_kwargs:
+    durations:
+      - 0
+      - 1
+      - 0
+    phases:
+      - learning_rate: 0.00016
+      - learning_rate: 0
+  n_timesteps: !!float 10e6
+  policy_hyperparams:
+    &microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck-policy
+    actor_head_style: grid2entity_transformer
+    critic_neck_pooling: max
+    encoder_attention_heads: 2
+    encoder_embed_dim: 32
+    encoder_feed_forward_dim: 128
+    encoder_layers: 2
+    feature_mask:
+      - 3
+      - 4
+      - 5
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+    hidden_critic_dims: []
+    normalization: layer
+    normalize_input: true
+    normalize_input_feature_indexes:
+      - -2
+      - -1
+    output_activation_fn: identity
+    post_backbone_normalization: null
+    pre_backbone_normalization: layer
+    subaction_mask:
+      0:
+        1: 1
+        2: 2
+        3: 3
+        4: 4
+        5: 4
+        6: 5
+    value_output_gain: 0
+  rollout_hyperparams:
+    full_batch_off_accelerator: false
+    gae_lambda: 0.95
+    gamma: 0.99
+    include_logp: false
+    n_steps: 256
+  rollout_type: reference
+
+Microrts-b2w10-grid2entity-ignore-mask: &microrts-b2w10-grid2entity-ignore-mask
+  <<: *microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck
+  env_hyperparams:
+    <<: *microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck-env
+    ignore_mask: true
+
+Microrts-b2w10-grid2entity-ignore-mask-4layers:
+  &microrts-b2w10-grid2entity-ignore-mask-4layers
+  <<: *microrts-b2w10-grid2entity-ignore-mask
+  policy_hyperparams:
+    <<: *microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck-policy
+    encoder_attention_heads: 4
+    encoder_embed_dim: 64
+    encoder_feed_forward_dim: 256
+    encoder_layers: 4
+
+Microrts-debug: &microrts-debug-defaults
+  <<: *microrts-short-squnet-map64
+  device: mps

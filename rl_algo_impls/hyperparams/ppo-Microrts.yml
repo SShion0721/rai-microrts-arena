@@ -1,0 +1,2683 @@
+_microrts: &microrts-defaults
+  n_timesteps: !!float 2e6
+  env_hyperparams: &microrts-env-defaults
+    n_envs: 8
+    vec_env_class: sync
+    mask_actions: true
+  policy_hyperparams: &microrts-policy-defaults
+    activation_fn: relu
+    cnn_style: microrts
+    cnn_flatten_dim: 128
+  rollout_hyperparams: &microrts-rollout-defaults
+    n_steps: 128
+  algo_hyperparams: &microrts-algo-defaults
+    batch_size: 256
+    n_epochs: 4
+    learning_rate: !!float 2.5e-4
+    clip_range: 0.1
+    vf_coef: 0.5
+    ent_coef: 0.01
+    clip_range_vf: 0.1
+    ppo2_vf_coef_halving: true
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 2.5e-4
+      - learning_rate: 0
+  eval_hyperparams: &microrts-eval-defaults
+    deterministic: false
+
+_no-mask-microrts: &no-mask-microrts-defaults
+  <<: *microrts-defaults
+  env_hyperparams:
+    <<: *microrts-env-defaults
+    mask_actions: false
+
+Microrts-Mining-v1-NoMask:
+  <<: *no-mask-microrts-defaults
+  env_id: MicrortsMining-v1
+
+Microrts-AttackShapedReward-v1-NoMask:
+  <<: *no-mask-microrts-defaults
+  env_id: MicrortsAttackShapedReward-v1
+
+Microrts-RandomEnemyShapedReward3-v1-NoMask:
+  <<: *no-mask-microrts-defaults
+  env_id: MicrortsRandomEnemyShapedReward3-v1
+
+_microrts_ai: &microrts-ai-defaults
+  <<: *microrts-defaults
+  n_timesteps: !!float 100e6
+  additional_keys_to_log:
+    [microrts_stats, microrts_results, results, action_mask_stats]
+  env_hyperparams: &microrts-ai-env-defaults
+    n_envs: 24
+    env_type: microrts
+    make_kwargs: &microrts-ai-env-make-kwargs-defaults
+      num_selfplay_envs: 0
+      max_steps: 4000
+      render_theme: 2
+      map_paths: [maps/16x16/basesWorkers16x16.xml]
+      reward_weight: [10.0, 1.0, 1.0, 0.2, 1.0, 4.0, 5.25, 6.0, 0]
+  policy_hyperparams: &microrts-ai-policy-defaults
+    <<: *microrts-policy-defaults
+    cnn_flatten_dim: 256
+    actor_head_style: gridnet
+    subaction_mask:
+      0:
+        1: 1
+        2: 2
+        3: 3
+        4: 4
+        5: 4
+        6: 5
+  rollout_hyperparams: &microrts-ai-rollout-defaults
+    n_steps: 512
+  algo_hyperparams: &microrts-ai-algo-defaults
+    <<: *microrts-algo-defaults
+    learning_rate: !!float 2.5e-4
+    batch_size: 3072
+    n_epochs: 4
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    clip_range: 0.1
+    clip_range_vf: 0.1
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 2.5e-4
+      - learning_rate: 0
+  eval_hyperparams: &microrts-ai-eval-defaults
+    <<: *microrts-eval-defaults
+    score_function: mean
+    max_video_length: 4000
+    env_overrides: &microrts-ai-eval-env-overrides
+      make_kwargs: &microrts-ai-eval-env-make-kwargs-overrides
+        <<: *microrts-ai-env-make-kwargs-defaults
+        reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+        bot_envs_alternate_player: false
+
+Microrts-AttackPassiveEnemySparseReward-v3:
+  <<: *microrts-ai-defaults
+  n_timesteps: !!float 2e6
+  env_id: MicrortsAttackPassiveEnemySparseReward-v3 # Workaround to keep model name simple
+  env_hyperparams:
+    <<: *microrts-ai-env-defaults
+    bots:
+      passiveAI: 24
+
+Microrts-DefeatRandomEnemySparseReward-v3: &microrts-random-ai-defaults
+  <<: *microrts-ai-defaults
+  n_timesteps: !!float 2e6
+  env_id: MicrortsDefeatRandomEnemySparseReward-v3 # Workaround to keep model name simple
+  env_hyperparams:
+    <<: *microrts-ai-env-defaults
+    bots:
+      randomBiasedAI: 24
+
+Microrts-DefeatRandomEnemySparseReward-v3-enc-dec:
+  <<: *microrts-random-ai-defaults
+  policy_hyperparams:
+    <<: *microrts-ai-policy-defaults
+    cnn_style: gridnet_encoder
+    actor_head_style: gridnet_decoder
+    v_hidden_sizes: [128]
+
+Microrts-DefeatRandomEnemySparseReward-v3-unet:
+  <<: *microrts-random-ai-defaults
+  # device: cpu
+  policy_hyperparams:
+    <<: *microrts-ai-policy-defaults
+    actor_head_style: unet
+    v_hidden_sizes: [256, 128]
+  algo_hyperparams:
+    <<: *microrts-ai-algo-defaults
+    learning_rate: !!float 2.5e-4
+  hyperparam_transitions_kwargs:
+    durations: [0, 0.1, 0, 0.9, 0]
+    phases:
+      - learning_rate: !!float 2.5e-6
+      - learning_rate: !!float 2.5e-4
+      - learning_rate: !!float 2.5e-8
+
+Microrts-DefeatCoacAIShaped-v3: &microrts-coacai-defaults
+  <<: *microrts-ai-defaults
+  env_id: MicrortsDefeatCoacAIShaped-v3 # Workaround to keep model name simple
+  n_timesteps: !!float 300e6
+  env_hyperparams: &microrts-coacai-env-defaults
+    <<: *microrts-ai-env-defaults
+    bots:
+      coacAI: 24
+  eval_hyperparams: &microrts-coacai-eval-defaults
+    <<: *microrts-ai-eval-defaults
+    step_freq: !!float 1e6
+    n_episodes: 28
+    env_overrides: &microrts-coacai-eval-env-overrides
+      <<: *microrts-ai-eval-env-overrides
+      n_envs: 28
+      bots:
+        coacAI: 2
+        randomBiasedAI: 2
+        randomAI: 2
+        passiveAI: 2
+        workerRushAI: 2
+        lightRushAI: 2
+        naiveMCTSAI: 2
+        mixedBot: 2
+        rojo: 2
+        izanagi: 2
+        tiamat: 2
+        droplet: 2
+        guidedRojoA3N: 2
+        mayari: 2
+
+Microrts-DefeatCoacAIShaped-v3-diverseBots: &microrts-diverse-defaults
+  <<: *microrts-coacai-defaults
+  env_hyperparams:
+    <<: *microrts-coacai-env-defaults
+    bots:
+      coacAI: 18
+      randomBiasedAI: 2
+      lightRushAI: 2
+      workerRushAI: 2
+
+Microrts-DefeatCoacAIShaped-v3-diverseBots-enc-dec:
+  &microrts-env-dec-diverse-defaults
+  <<: *microrts-diverse-defaults
+  policy_hyperparams:
+    <<: *microrts-ai-policy-defaults
+    cnn_style: gridnet_encoder
+    actor_head_style: gridnet_decoder
+    v_hidden_sizes: [128]
+
+Microrts-DefeatCoacAIShaped-v3-diverseBots-debug-enc-dec:
+  <<: *microrts-env-dec-diverse-defaults
+  n_timesteps: !!float 1e6
+
+Microrts-DefeatCoacAIShaped-v3-diverseBots-unet: &microrts-unet-defaults
+  <<: *microrts-diverse-defaults
+  policy_hyperparams:
+    <<: *microrts-ai-policy-defaults
+    actor_head_style: unet
+    v_hidden_sizes: [256, 128]
+  algo_hyperparams: &microrts-unet-algo-defaults
+    <<: *microrts-ai-algo-defaults
+    learning_rate: !!float 2.5e-4
+  hyperparam_transitions_kwargs:
+    durations: [0, 0.1, 0, 0.9, 0]
+    phases:
+      - learning_rate: !!float 2.5e-6
+      - learning_rate: !!float 2.5e-4
+      - learning_rate: !!float 2.5e-8
+
+Microrts-selfplay-unet: &microrts-selfplay-defaults
+  <<: *microrts-unet-defaults
+  env_hyperparams: &microrts-selfplay-env-defaults
+    <<: *microrts-ai-env-defaults
+    make_kwargs: &microrts-selfplay-env-make-kwargs-defaults
+      <<: *microrts-ai-env-make-kwargs-defaults
+      num_selfplay_envs: 36
+      bot_envs_alternate_player: true
+    self_play_kwargs: &microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 12
+      save_steps: 300000
+      swap_steps: 6000
+      swap_window_size: 4
+      window: 33
+  eval_hyperparams: &microrts-selfplay-eval-defaults
+    <<: *microrts-coacai-eval-defaults
+    env_overrides: &microrts-selfplay-eval-env-overrides
+      <<: *microrts-coacai-eval-env-overrides
+      self_play_kwargs: {}
+
+Microrts-selfplay-unet-winloss: &microrts-selfplay-winloss-defaults
+  <<: *microrts-selfplay-defaults
+  env_hyperparams:
+    <<: *microrts-selfplay-env-defaults
+    make_kwargs:
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+  rollout_hyperparams: &microrts-selfplay-winloss-rollout-defaults
+    <<: *microrts-ai-rollout-defaults
+    gamma: 0.999
+
+_Microrts-squnet: &microrts-squnet
+  <<: *microrts-selfplay-defaults
+  env_hyperparams: &microrts-squnet-env-defaults
+    <<: *microrts-selfplay-env-defaults
+    additional_win_loss_reward: true
+    score_reward_kwargs:
+      delta_every_step: true
+    valid_sizes: [8, 12, 16, 32, 64]
+  eval_hyperparams: &microrts-squnet-eval-defaults
+    <<: *microrts-selfplay-eval-defaults
+    env_overrides: &microrts-squnet-eval-env-overrides
+      <<: *microrts-selfplay-eval-env-overrides
+      additional_win_loss_reward: false
+      score_reward_kwargs: {}
+      map_paths: [] # Use default map instead
+  policy_hyperparams: &microrts-squnet-policy-defaults
+    <<: *microrts-ai-policy-defaults
+    actor_head_style: squeeze_unet
+    additional_critic_activation_functions: [tanh, identity]
+  rollout_hyperparams: &microrts-squnet-rollout-defaults
+    <<: *microrts-ai-rollout-defaults
+    gamma: [0.99, 0.999, 0.999]
+    gae_lambda: [0.95, 0.99, 0.99]
+  algo_hyperparams: &microrts-squnet-algo-defaults
+    <<: *microrts-ai-algo-defaults
+    n_epochs: 2
+    clip_range_vf: null
+
+_Microrts-squnet-map8: &microrts-squnet-map8
+  <<: *microrts-squnet
+  env_id: Microrts-squnet-map8
+  env_hyperparams: &microrts-squnet-map8-env-defaults
+    <<: *microrts-squnet-env-defaults
+    n_envs: 48
+    map_paths:
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+    make_kwargs:
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      num_selfplay_envs: 40
+      max_steps: 3000
+    self_play_kwargs:
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 8
+    bots:
+      coacAI: 8
+      mayari: 8
+    valid_sizes: [8]
+  eval_hyperparams: &microrts-squnet-map8-eval-defaults
+    <<: *microrts-squnet-eval-defaults
+    env_overrides:
+      <<: *microrts-squnet-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-ai-eval-env-make-kwargs-overrides
+        max_steps: 3000
+        map_paths: [maps/8x8/basesWorkers8x8A.xml]
+  policy_hyperparams: &microrts-squnet-map8-policy-defaults
+    <<: *microrts-squnet-policy-defaults
+    channels_per_level: [128, 128, 256]
+    strides_per_level: [2, 2]
+    encoder_residual_blocks_per_level: [1, 1, 1]
+    decoder_residual_blocks_per_level: [1, 1]
+  rollout_hyperparams:
+    <<: *microrts-ai-rollout-defaults
+    n_steps: 512
+  algo_hyperparams: &microrts-squnet-map8-algo-defaults
+    <<: *microrts-squnet-algo-defaults
+    batch_size: 24576
+
+Microrts-squnet-map8-selfplay: &microrts-squnet-map8-selfplay
+  <<: *microrts-squnet-map8
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs: &microrts-squnet-map8-selfplay-phases
+    phases:
+      - multi_reward_weights: [0.8, 0.01, 0.19] # Initial shaped rewards (mostly)
+        vf_coef: [0.5, 0.1, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 6e-5 # Reduced learning rate for large batch size
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.001
+        learning_rate: !!float 2e-5
+    durations:
+      - 0.5
+      - 0.3
+      - 0.2
+
+_Microrts-squnet-map12: &microrts-squnet-map12
+  <<: *microrts-squnet
+  env_id: Microrts-squnet-map12
+  env_hyperparams: &microrts-squnet-map12-env-defaults
+    <<: *microrts-squnet-env-defaults
+    n_envs: 32
+    map_paths:
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/12x12/basesWorkers12x12J.xml
+    make_kwargs:
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      num_selfplay_envs: 32
+      max_steps: 3500
+    self_play_kwargs:
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 8
+    bots:
+      coacAI: 4
+      mayari: 4
+    valid_sizes: [12]
+  eval_hyperparams: &microrts-squnet-map12-eval-defaults
+    <<: *microrts-squnet-eval-defaults
+    env_overrides:
+      <<: *microrts-squnet-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-ai-eval-env-make-kwargs-overrides
+        max_steps: 3000
+        map_paths: [maps/8x8/basesWorkers8x8A.xml]
+  policy_hyperparams: &microrts-squnet-map12-policy-defaults
+    <<: *microrts-squnet-policy-defaults
+    channels_per_level: [64, 128, 256]
+    strides_per_level: [2, 2]
+    encoder_residual_blocks_per_level: [1, 1, 1]
+    decoder_residual_blocks_per_level: [1, 1]
+  algo_hyperparams: &microrts-squnet-map12-algo-defaults
+    <<: *microrts-squnet-algo-defaults
+    batch_size: 16384
+
+_Microrts-squnet-map12-selfplay: &microrts-squnet-map12-selfplay
+  <<: *microrts-squnet-map12
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs: &microrts-squnet-map12-selfplay-phases
+    phases:
+      - multi_reward_weights: [0.8, 0.01, 0.19] # Initial shaped rewards (mostly)
+        vf_coef: [0.5, 0.1, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 1e-4
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.001
+        learning_rate: !!float 5e-5
+    durations:
+      - 0.5
+      - 0.3
+      - 0.2
+
+_Microrts-squnet-map12-wide: &microrts-squnet-map12-wide
+  <<: *microrts-squnet-map12
+  policy_hyperparams: &microrts-squnet-map12-wide-policy-defaults
+    <<: *microrts-squnet-map12-policy-defaults
+    channels_per_level: [128, 256, 256]
+
+Microrts-squnet-map12-wide-selfplay: &microrts-squnet-map12-wide-selfplay
+  <<: *microrts-squnet-map12-wide
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-map16: &microrts-squnet-map16
+  <<: *microrts-squnet
+  env_id: Microrts-squnet-map16
+  env_hyperparams: &microrts-squnet-map16-env-defaults
+    <<: *microrts-squnet-env-defaults
+    n_envs: 24
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/16x16/melee16x16Mixed12.xml
+    make_kwargs: &microrts-squnet-map16-env-make-kwargs-defaults
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      num_selfplay_envs: 24
+      max_steps: 4000
+    self_play_kwargs:
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 6
+      swap_window_size: 3
+    bots:
+      coacAI: 3
+      mayari: 3
+    valid_sizes: [16]
+  eval_hyperparams: &microrts-squnet-map16-eval-defaults
+    <<: *microrts-squnet-eval-defaults
+    env_overrides: &microrts-squnet-map16-eval-env-overrides
+      <<: *microrts-squnet-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-ai-eval-env-make-kwargs-overrides
+        max_steps: 4000
+        map_paths: [maps/16x16/basesWorkers16x16A.xml]
+  policy_hyperparams: &microrts-squnet-map16-policy-defaults
+    <<: *microrts-squnet-policy-defaults
+    channels_per_level: [128, 256, 256, 256]
+    strides_per_level: [2, 2, 2]
+    encoder_residual_blocks_per_level: [1, 1, 1, 1]
+    decoder_residual_blocks_per_level: [1, 1, 1]
+  algo_hyperparams: &microrts-squnet-map16-algo-defaults
+    <<: *microrts-squnet-algo-defaults
+    batch_size: 6144
+
+Microrts-squnet-map16-selfplay: &microrts-squnet-map16-selfplay
+  <<: *microrts-squnet-map16
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-deep8: &microrts-squnet-deep8
+  <<: *microrts-squnet-map16
+  policy_hyperparams: &microrts-squnet-deep8-policy-defaults
+    <<: *microrts-squnet-map16-policy-defaults
+    channels_per_level: [128, 128, 128, 128]
+    strides_per_level: [2, 2, 2]
+    encoder_residual_blocks_per_level: [3, 1, 1, 3]
+    decoder_residual_blocks_per_level: [1, 1, 3]
+  algo_hyperparams: &microrts-squnet-deep8-algo-defaults
+    <<: *microrts-squnet-map16-algo-defaults
+    batch_size: 6144
+
+Microrts-squnet-deep8-selfplay: &microrts-squnet-deep8-selfplay
+  <<: *microrts-squnet-deep8
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-deep8-64: &microrts-squnet-deep8-64
+  <<: *microrts-squnet-map16
+  policy_hyperparams: &microrts-squnet-deep8-64-policy-defaults
+    <<: *microrts-squnet-map16-policy-defaults
+    channels_per_level: [128, 128, 128, 128]
+    strides_per_level: [2, 2, 2]
+    encoder_residual_blocks_per_level: [3, 1, 1, 4]
+    decoder_residual_blocks_per_level: [1, 1, 3]
+  algo_hyperparams: &microrts-squnet-deep8-64-algo-defaults
+    <<: *microrts-squnet-map16-algo-defaults
+    batch_size: 6144
+
+Microrts-squnet-deep8-64-selfplay: &microrts-squnet-deep8-64-selfplay
+  <<: *microrts-squnet-deep8-64
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-deep16-128: &microrts-squnet-deep16-128
+  <<: *microrts-squnet-map16
+  policy_hyperparams: &microrts-squnet-deep16-128-policy-defaults
+    <<: *microrts-squnet-map16-policy-defaults
+    channels_per_level: [128, 128, 128]
+    strides_per_level: [4, 4]
+    deconv_strides_per_level: [[2, 2], [2, 2]]
+    encoder_residual_blocks_per_level: [3, 2, 4]
+    decoder_residual_blocks_per_level: [2, 3]
+  algo_hyperparams: &microrts-squnet-deep16-128-algo-defaults
+    <<: *microrts-squnet-map16-algo-defaults
+    batch_size: 6144
+
+Microrts-squnet-deep16-128-selfplay: &microrts-squnet-deep16-128-selfplay
+  <<: *microrts-squnet-deep16-128
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-deep16-sc-128: &microrts-squnet-deep16-sc-128
+  <<: *microrts-squnet-deep16-128
+  policy_hyperparams: &microrts-squnet-deep16-sc-128-policy-defaults
+    <<: *microrts-squnet-deep16-128-policy-defaults
+    strides_per_level: [[2, 2], [2, 2]]
+    increment_kernel_size_on_down_conv: true
+  algo_hyperparams: &microrts-squnet-deep16-sc-128-algo-defaults
+    <<: *microrts-squnet-deep16-128-algo-defaults
+    batch_size: 6144
+
+Microrts-squnet-deep16-sc-128-selfplay: &microrts-squnet-deep16-sc-128-selfplay
+  <<: *microrts-squnet-deep16-sc-128
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs: &microrts-squnet-deep16-sc-128-selfplay-phases
+    <<: *microrts-squnet-map12-selfplay-phases
+
+Microrts-squnet-deep16-sc-128-cosine-selfplay:
+  &microrts-squnet-deep16-sc-128-cosine-selfplay
+  <<: *microrts-squnet-deep16-sc-128-selfplay
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-deep16-sc-128-selfplay-phases
+    interpolate_method: cosine
+
+Microrts-squnet-d16-128-sc-cos-ga-selfplay:
+  &microrts-squnet-d16-128-sc-cos-ga-selfplay
+  <<: *microrts-squnet-deep16-sc-128-cosine-selfplay
+  algo_hyperparams: &microrts-squnet-d16-128-sc-cos-ga-selfplay-algo-defaults
+    <<: *microrts-squnet-deep16-sc-128-algo-defaults
+    gradient_accumulation: true
+
+Microrts-squnet-d16-128-sc-cos-ga-selfplay-a10:
+  &microrts-squnet-d16-128-sc-cos-ga-selfplay-a10
+  <<: *microrts-squnet-d16-128-sc-cos-ga-selfplay
+  algo_hyperparams: &microrts-squnet-d16-128-sc-cos-ga-selfplay-a10-algo
+    <<: *microrts-squnet-d16-128-sc-cos-ga-selfplay-algo-defaults
+    batch_size: 3072
+
+_Microrts-dc-repro-map16: &microrts-dc-repro-map16
+  <<: *microrts-squnet-map16
+  policy_hyperparams: &microrts-dc-repro-policy-defaults
+    <<: *microrts-squnet-map16-policy-defaults
+    channels_per_level: [128, 128]
+    strides_per_level: [4]
+    deconv_strides_per_level: [[2, 2]]
+    encoder_residual_blocks_per_level: [4, 6]
+    decoder_residual_blocks_per_level: [4]
+  algo_hyperparams: &microrts-dc-repro-map16-algo-defaults
+    <<: *microrts-squnet-map16-algo-defaults
+    batch_size: 4096
+
+Microrts-dc-repro-map16-selfplay: &microrts-dc-repro-map16-selfplay
+  <<: *microrts-dc-repro-map16
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-map32: &microrts-squnet-map32
+  <<: *microrts-squnet
+  env_id: Microrts-squnet-map32
+  env_hyperparams: &microrts-squnet-map32-env-defaults
+    <<: *microrts-squnet-env-defaults
+    n_envs: 24
+    map_paths:
+      - maps/DoubleGame24x24.xml
+      - maps/BWDistantResources32x32.xml
+      - maps/chambers32x32.xml
+    make_kwargs: &microrts-squnet-map32-env-make-kwargs
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      num_selfplay_envs: 24
+      max_steps: 6000
+    self_play_kwargs: &microrts-squnet-map32-env-self-play-kwargs
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 6
+      swap_window_size: 3
+    bots:
+      coacAI: 3
+      mayari: 3
+    valid_sizes: [32]
+  eval_hyperparams: &microrts-squnet-map32-eval-defaults
+    <<: *microrts-squnet-eval-defaults
+    step_freq: !!float 5e6
+    env_overrides: &microrts-squnet-map32-eval-env-overrides
+      <<: *microrts-squnet-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-ai-eval-env-make-kwargs-overrides
+        max_steps: 6000
+        map_paths: [maps/BWDistantResources32x32.xml]
+  policy_hyperparams: &microrts-squnet-map32-policy-defaults
+    <<: *microrts-squnet-policy-defaults
+    channels_per_level: [128, 256, 256, 256]
+    strides_per_level: [2, 2, 4]
+    encoder_residual_blocks_per_level: [1, 1, 1, 1]
+    decoder_residual_blocks_per_level: [1, 1, 1]
+  algo_hyperparams: &microrts-squnet-map32-algo-defaults
+    <<: *microrts-squnet-algo-defaults
+    batch_size: 2048
+
+_Microrts-squnet-map32-selfplay: &microrts-squnet-map32-selfplay
+  <<: *microrts-squnet-map32
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-map32-128ch: &microrts-squnet-map32-128ch
+  <<: *microrts-squnet-map32
+  policy_hyperparams: &microrts-squnet-map32-128ch-policy-defaults
+    <<: *microrts-squnet-map32-policy-defaults
+    channels_per_level: [128, 128, 128, 128]
+
+Microrts-squnet-map32-128ch-selfplay: &microrts-squnet-map32-128ch-selfplay
+  <<: *microrts-squnet-map32-128ch
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-map64: &microrts-squnet-map64
+  <<: *microrts-squnet
+  env_id: Microrts-squnet-map64
+  env_hyperparams: &microrts-squnet-map64-env-defaults
+    <<: *microrts-squnet-env-defaults
+    n_envs: 24
+    map_paths:
+      - maps/BroodWar/(4)BloodBath.scmB.xml # 64x64
+      - maps/BroodWar/(4)BloodBath.scmE.xml # 64x64
+    make_kwargs: &microrts-squnet-map64-env-make-kwargs
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      num_selfplay_envs: 20
+      max_steps: 8000
+    self_play_kwargs: &microrts-squnet-map64-env-self-play-kwargs
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 4
+      swap_window_size: 4
+    bots:
+      coacAI: 4
+      mayari: 4
+    valid_sizes: [64]
+  eval_hyperparams: &microrts-squnet-map64-eval-defaults
+    <<: *microrts-squnet-eval-defaults
+    step_freq: !!float 10e6
+    env_overrides:
+      <<: *microrts-squnet-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-ai-eval-env-make-kwargs-overrides
+        max_steps: 8000
+        map_paths: [maps/BroodWar/(4)BloodBath.scmB.xml]
+  policy_hyperparams: &microrts-squnet-map64-policy-defaults
+    <<: *microrts-squnet-policy-defaults
+    channels_per_level: [64, 128, 256, 256]
+    strides_per_level: [2, 4, 4]
+    encoder_residual_blocks_per_level: [1, 1, 1, 1]
+    decoder_residual_blocks_per_level: [1, 1, 1]
+  rollout_hyperparams:
+    <<: *microrts-ai-rollout-defaults
+    n_steps: 256
+  algo_hyperparams: &microrts-squnet-map64-algo-defaults
+    <<: *microrts-squnet-algo-defaults
+    batch_size: 384
+
+_Microrts-squnet-map64-selfplay: &microrts-squnet-map64-selfplay
+  <<: *microrts-squnet-map64
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-map64-128ch: &microrts-squnet-map64-128ch
+  <<: *microrts-squnet-map64
+  policy_hyperparams: &microrts-squnet-map64-128ch-policy-defaults
+    <<: *microrts-squnet-map64-policy-defaults
+    channels_per_level: [128, 128, 128, 128]
+  algo_hyperparams:
+    <<: *microrts-squnet-map64-algo-defaults
+    batch_size: 258
+
+Microrts-squnet-map64-128ch-selfplay: &microrts-squnet-map64-128ch-selfplay
+  <<: *microrts-squnet-map64-128ch
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+_Microrts-squnet-map64-64ch: &microrts-squnet-map64-64ch
+  <<: *microrts-squnet-map64
+  policy_hyperparams: &microrts-squnet-map64-64ch-policy-defaults
+    <<: *microrts-squnet-map64-policy-defaults
+    channels_per_level: [64, 64, 64, 64]
+  algo_hyperparams: &microrts-squnet-map64-64ch-algo-defaults
+    <<: *microrts-squnet-map64-algo-defaults
+    batch_size: 768
+
+Microrts-squnet-map64-64ch-selfplay: &microrts-squnet-map64-64ch-selfplay
+  <<: *microrts-squnet-map64-64ch
+  n_timesteps: !!float 200e6
+  hyperparam_transitions_kwargs:
+    <<: *microrts-squnet-map12-selfplay-phases
+
+Microrts-selfplay-dc-phases: &microrts-sp-dc-phases-defaults
+  <<: *microrts-selfplay-defaults
+  env_hyperparams: &microrts-sp-dc-phases-env-defaults
+    <<: *microrts-selfplay-env-defaults
+    additional_win_loss_reward: true
+    score_reward_kwargs:
+      delta_every_step: true
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/16x16/EightBasesWorkers16x16.xml # Not public competition map
+      # - maps/DoubleGame24x24.xml # 24x24
+      # - maps/BWDistantResources32x32.xml # 32x32
+      # - maps/BroodWar/(4)BloodBath.scmB.xml # 64x64
+  eval_hyperparams: &microrts-sp-dc-phases-eval-defaults
+    <<: *microrts-selfplay-eval-defaults
+    env_overrides: &microrts-sp-dc-phases-eval-env-overrides
+      <<: *microrts-selfplay-eval-env-overrides
+      additional_win_loss_reward: false
+      score_reward_kwargs: {}
+      map_paths: [] # Use default map instead
+  policy_hyperparams: &microrts-sp-dc-phases-policy-defaults
+    <<: *microrts-ai-policy-defaults
+    actor_head_style: double_cone
+    pooled_channels: 128
+    additional_critic_activation_functions: [tanh, identity]
+    gelu_pool_conv: false # Bug with prior model, but was trained with this
+  rollout_hyperparams: &microrts-sp-dc-phases-rollout-defaults
+    <<: *microrts-ai-rollout-defaults
+    gamma: [0.99, 0.999, 0.999]
+    gae_lambda: [0.95, 0.99, 0.99]
+  algo_hyperparams: &microrts-sp-dc-phases-algo-defaults
+    <<: *microrts-ai-algo-defaults
+    n_epochs: 2
+  hyperparam_transitions_kwargs: &microrts-sp-dc-phases-transitions-defaults
+    phases:
+      - multi_reward_weights: [0.8, 0.01, 0.19] # Initial shaped rewards (mostly)
+        vf_coef: [0.5, 0.1, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 1e-4
+      - multi_reward_weights: [0, 0.5, 0.5] # Win-loss + Score delta
+        vf_coef: [0, 0.4, 0.4]
+        ent_coef: 0.01
+        learning_rate: !!float 1e-4
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.001
+        learning_rate: !!float 5e-5
+    durations:
+      - 0.3
+      - 0.2
+      - 0.1
+      - 0.2
+      - 0.2
+
+Microrts-selfplay-dc-phases-A10: &microrts-sp-dc-phases-a10-defaults
+  <<: *microrts-sp-dc-phases-defaults
+  algo_hyperparams: &microrts-sp-dc-phases-a10-algo-defaults
+    <<: *microrts-sp-dc-phases-algo-defaults
+    batch_size: 2048
+
+Microrts-selfplay-dc-phases-A6000: &microrts-sp-dc-phases-a6000-defaults
+  <<: *microrts-sp-dc-phases-defaults
+  algo_hyperparams: &microrts-sp-dc-phases-a6000-algo-defaults
+    <<: *microrts-sp-dc-phases-algo-defaults
+    batch_size: 4096
+
+_Microrts-tweaks-base: &microrts-tweaks-base
+  <<: *microrts-sp-dc-phases-a6000-defaults
+  env_hyperparams: &microrts-tweaks-base-env-defaults
+    <<: *microrts-sp-dc-phases-env-defaults
+    valid_sizes: [16]
+    paper_planes_sizes: [16]
+  policy_hyperparams: &microrts-tweaks-base-policy-defaults
+    <<: *microrts-sp-dc-phases-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-benchmarks/1ilo9yae
+    load_run_path_best: true
+    gelu_pool_conv: true
+  rollout_hyperparams: &microrts-tweaks-base-rollout-defaults
+    <<: *microrts-sp-dc-phases-rollout-defaults
+    gamma: [0.99, 0.999, 0.999]
+    gae_lambda: [0.95, 0.99, 0.99]
+
+Microrts-finetuned: &microrts-finetuned
+  <<: *microrts-tweaks-base
+  n_timesteps: !!float 100e6
+  hyperparam_transitions_kwargs: &finetuned-hyperparam-transitions
+    phases:
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.001
+        learning_rate: !!float 5e-5
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.0001
+        learning_rate: !!float 1e-5
+    durations:
+      - 0.3
+      - 0.4
+      - 0.3
+
+Microrts-A6000-finetuned-shaped: &microrts-a6000-finetuned-shaped
+  <<: *microrts-tweaks-base
+  n_timesteps: !!float 100e6
+  hyperparam_transitions_kwargs: &shaped-finetuning-hyperparam-transitions
+    phases:
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0.2, 0.4, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 5e-5
+      - multi_reward_weights: [0.4, 0.5, 0.1] # Sparse + Shaped rewards
+        vf_coef: [0.3, 0.4, 0.1]
+        ent_coef: 0.01
+        learning_rate: !!float 7e-5
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.0001
+        learning_rate: !!float 1e-5
+    durations:
+      - 0
+      - 0.05
+      - 0.3
+      - 0.2
+      - 0.45
+
+Microrts-A6000-finetuned-coac: &microrts-a6000-finetuned-coac
+  <<: *microrts-finetuned
+  env_hyperparams: &microrts-a6000-finetuned-coac-env-defaults
+    <<: *microrts-tweaks-base-env-defaults
+    make_kwargs: &microrts-a6000-finetuned-coac-env-make-kwargs
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      num_selfplay_envs: 12
+    self_play_kwargs:
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 0
+    bots:
+      coacAI: 12
+
+Microrts-A6000-finetuned-coac-mayari: &microrts-a6000-finetuned-coac-mayari
+  <<: *microrts-a6000-finetuned-coac
+  env_hyperparams: &microrts-a6000-finetuned-coac-mayari-env-defaults
+    <<: *microrts-a6000-finetuned-coac-env-defaults
+    make_kwargs:
+      <<: *microrts-a6000-finetuned-coac-env-make-kwargs
+      bot_envs_alternate_player: true
+    bots:
+      coacAI: 6
+      mayari: 6
+  eval_hyperparams: &microrts-a6000-finetuned-coac-mayari-eval-defaults
+    <<: *microrts-sp-dc-phases-eval-defaults
+    env_overrides: &microrts-a6000-finetuned-coac-mayari-eval-env-overrides
+      <<: *microrts-sp-dc-phases-eval-env-overrides
+      make_kwargs:
+        &microrts-a6000-finetuned-coac-mayari-eval-env-make-kwargs-overrides
+        <<: *microrts-ai-eval-env-make-kwargs-overrides
+        bot_envs_alternate_player: false
+
+Microrts-finetuned-NoWhereToRun: &microrts-finetuned-nowheretorun
+  <<: *microrts-a6000-finetuned-coac-mayari
+  env_id: Microrts-finetuned-NoWhereToRun
+  policy_hyperparams:
+    <<: *microrts-tweaks-base-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-benchmarks/hpp5pffx
+    load_run_path_best: true
+  env_hyperparams:
+    <<: *microrts-a6000-finetuned-coac-mayari-env-defaults
+    map_paths:
+      - maps/NoWhereToRun9x8.xml
+    valid_sizes: [12]
+    paper_planes_sizes: [12]
+  eval_hyperparams: &microrts-finetuned-nowheretorun-eval-defaults
+    <<: *microrts-a6000-finetuned-coac-mayari-eval-defaults
+    env_overrides:
+      <<: *microrts-a6000-finetuned-coac-mayari-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-a6000-finetuned-coac-mayari-eval-env-make-kwargs-overrides
+        map_paths: [maps/NoWhereToRun9x8.xml]
+
+Microrts-finetuned-NoWhereToRun-shaped: &microrts-finetuned-nowheretorun-shaped
+  <<: *microrts-finetuned-nowheretorun
+  hyperparam_transitions_kwargs:
+    phases:
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0.2, 0.4, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 5e-5
+      - multi_reward_weights: [0.3, 0.5, 0.2] # Sparse + Shaped rewards
+        vf_coef: [0.25, 0.4, 0.15]
+        ent_coef: 0.01
+        learning_rate: !!float 7e-5
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.0001
+        learning_rate: !!float 1e-5
+    durations:
+      - 0
+      - 0.05
+      - 0.3
+      - 0.2
+      - 0.45
+
+Microrts-finetuned-map16-from-NtR: &microrts-finetuned-map16-from-ntr
+  <<: *microrts-a6000-finetuned-coac-mayari
+  policy_hyperparams:
+    <<: *microrts-tweaks-base-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-microrts-2023/tt8wlx1i
+    load_run_path_best: true
+  env_hyperparams:
+    <<: *microrts-a6000-finetuned-coac-mayari-env-defaults
+    map_paths:
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/NoWhereToRun9x8.xml
+    valid_sizes: [16]
+    paper_planes_sizes: [16]
+  eval_hyperparams: &microrts-finetuned-map16-from-ntr-eval-defaults
+    <<: *microrts-a6000-finetuned-coac-mayari-eval-defaults
+    env_overrides:
+      <<: *microrts-a6000-finetuned-coac-mayari-eval-env-overrides
+      map_paths:
+        - maps/16x16/basesWorkers16x16A.xml
+        - maps/NoWhereToRun9x8.xml
+      bots:
+        coacAI: 4
+        mayari: 4
+        workerRushAI: 4
+        lightRushAI: 4
+        mixedBot: 4
+        izanagi: 4
+        tiamat: 4
+
+Microrts-finetuned-map16-from-NtR-shaped:
+  &microrts-finetuned-map16-from-ntr-shaped
+  <<: *microrts-finetuned-map16-from-ntr
+  hyperparam_transitions_kwargs:
+    <<: *shaped-finetuning-hyperparam-transitions
+
+Microrts-finetuned-DoubleGame24x24: &microrts-finetuned-doublegame
+  <<: *microrts-a6000-finetuned-coac-mayari
+  env_id: Microrts-finetuned-doublegame
+  env_hyperparams:
+    <<: *microrts-a6000-finetuned-coac-mayari-env-defaults
+    map_paths:
+      - maps/DoubleGame24x24.xml
+    valid_sizes: [24]
+    paper_planes_sizes: [24]
+  eval_hyperparams: &microrts-finetuned-doublegame-eval-defaults
+    <<: *microrts-a6000-finetuned-coac-mayari-eval-defaults
+    env_overrides:
+      <<: *microrts-a6000-finetuned-coac-mayari-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-a6000-finetuned-coac-mayari-eval-env-make-kwargs-overrides
+        map_paths: [maps/DoubleGame24x24.xml]
+  algo_hyperparams:
+    <<: *microrts-sp-dc-phases-a6000-algo-defaults
+    batch_size: 2048
+
+Microrts-finetuned-DoubleGame-shaped: &microrts-finetuned-doublegame-shaped
+  <<: *microrts-finetuned-doublegame
+  hyperparam_transitions_kwargs:
+    phases:
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0.2, 0.4, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 5e-5
+      - multi_reward_weights: [0.3, 0.5, 0.2] # Sparse + Shaped rewards
+        vf_coef: [0.25, 0.4, 0.15]
+        ent_coef: 0.01
+        learning_rate: !!float 7e-5
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.0001
+        learning_rate: !!float 1e-5
+    durations:
+      - 0
+      - 0.05
+      - 0.3
+      - 0.2
+      - 0.45
+
+Microrts-finetuned-DoubleGame-from-NtR: &microrts-finetuned-doublegame-from-ntr
+  <<: *microrts-finetuned-doublegame-shaped
+  policy_hyperparams:
+    <<: *microrts-tweaks-base-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-benchmarks/hpp5pffx
+    load_run_path_best: true
+
+Microrts-squnet-map32-from-squnet16: &microrts-squnet-map32-from-squnet16
+  <<: *microrts-squnet-map32
+  n_timesteps: !!float 100e6
+  policy_hyperparams:
+    <<: *microrts-squnet-map16-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-benchmarks/4hp85363
+    load_run_path_best: true
+  hyperparam_transitions_kwargs:
+    <<: *shaped-finetuning-hyperparam-transitions
+
+Microrts-squnet-map32-128ch-finetuned: &microrts-squnet-map32-128ch-finetuned
+  <<: *microrts-squnet-map32-128ch
+  n_timesteps: !!float 100e6
+  policy_hyperparams:
+    <<: *microrts-squnet-map32-128ch-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-benchmarks/tga53t25
+    load_run_path_best: true
+  hyperparam_transitions_kwargs:
+    <<: *finetuned-hyperparam-transitions
+
+Microrts-squnet-DistantResources-128ch-finetuned:
+  &microrts-squnet-distantresources-128ch-finetuned
+  <<: *microrts-squnet-map32-128ch-finetuned
+  env_hyperparams:
+    <<: *microrts-squnet-map32-env-defaults
+    map_paths:
+      - maps/BWDistantResources32x32.xml
+    valid_sizes: [32]
+
+Microrts-finetuned-DistantResources: &microrts-finetuned-distantresources
+  <<: *microrts-a6000-finetuned-coac-mayari
+  env_id: Microrts-finetuned-distantresources
+  policy_hyperparams:
+    <<: *microrts-tweaks-base-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-benchmarks/x4tg80vk
+    load_run_path_best: true
+  env_hyperparams:
+    <<: *microrts-a6000-finetuned-coac-mayari-env-defaults
+    map_paths:
+      - maps/BWDistantResources32x32.xml
+    valid_sizes: [32]
+    paper_planes_sizes: [32]
+  eval_hyperparams: &microrts-finetuned-distantresources-eval-defaults
+    <<: *microrts-a6000-finetuned-coac-mayari-eval-defaults
+    env_overrides:
+      <<: *microrts-a6000-finetuned-coac-mayari-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-a6000-finetuned-coac-mayari-eval-env-make-kwargs-overrides
+        map_paths: [maps/BWDistantResources32x32.xml]
+  algo_hyperparams:
+    <<: *microrts-sp-dc-phases-a6000-algo-defaults
+    batch_size: 1024
+
+Microrts-finetuned-DistantResources-shaped:
+  &microrts-finetuned-distantresources-shaped
+  <<: *microrts-finetuned-distantresources
+  hyperparam_transitions_kwargs:
+    phases:
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0.2, 0.4, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 5e-5
+      - multi_reward_weights: [0.3, 0.5, 0.2] # Sparse + Shaped rewards
+        vf_coef: [0.25, 0.4, 0.15]
+        ent_coef: 0.01
+        learning_rate: !!float 7e-5
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.0001
+        learning_rate: !!float 1e-5
+    durations:
+      - 0
+      - 0.05
+      - 0.3
+      - 0.2
+      - 0.45
+
+Microrts-finetuned-BloodBath: &microrts-finetuned-bloodbath
+  <<: *microrts-a6000-finetuned-coac-mayari
+  env_id: Microrts-finetuned-bloodbath
+  env_hyperparams:
+    <<: *microrts-a6000-finetuned-coac-mayari-env-defaults
+    map_paths:
+      - maps/BroodWar/(4)BloodBath.scmB.xml
+    valid_sizes: [64]
+    paper_planes_sizes: [64]
+  eval_hyperparams: &microrts-finetuned-bloodbath-eval-defaults
+    <<: *microrts-a6000-finetuned-coac-mayari-eval-defaults
+    env_overrides:
+      <<: *microrts-a6000-finetuned-coac-mayari-eval-env-overrides
+      make_kwargs:
+        <<: *microrts-a6000-finetuned-coac-mayari-eval-env-make-kwargs-overrides
+        map_paths: [maps/BroodWar/(4)BloodBath.scmB.xml]
+  rollout_hyperparams:
+    <<: *microrts-ai-rollout-defaults
+    n_steps: 256
+  algo_hyperparams:
+    <<: *microrts-sp-dc-phases-a6000-algo-defaults
+    batch_size: 192
+
+Microrts-finetuned-BloodBath-shaped: &microrts-finetuned-bloodbath-shaped
+  <<: *microrts-finetuned-bloodbath
+  hyperparam_transitions_kwargs:
+    phases:
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0.2, 0.4, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 5e-5
+      - multi_reward_weights: [0.3, 0.5, 0.2] # Sparse + Shaped rewards
+        vf_coef: [0.25, 0.4, 0.15]
+        ent_coef: 0.01
+        learning_rate: !!float 7e-5
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.0001
+        learning_rate: !!float 1e-5
+    durations:
+      - 0
+      - 0.05
+      - 0.3
+      - 0.2
+      - 0.45
+
+Microrts-finetuned-BloodBath-from-DR: &microrts-finetuned-bloodbath-from-dr
+  <<: *microrts-finetuned-bloodbath-shaped
+  policy_hyperparams:
+    <<: *microrts-tweaks-base-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-benchmarks/x4tg80vk
+    load_run_path_best: true
+
+Microrts-squnet-BloodBath-64ch-finetuned:
+  &microrts-squnet-bloodbath-64ch-finetuned
+  <<: *microrts-squnet-map64-64ch
+  n_timesteps: !!float 100e6
+  env_hyperparams:
+    <<: *microrts-squnet-map64-env-defaults
+    map_paths:
+      - maps/BroodWar/(4)BloodBath.scmB.xml
+    valid_sizes: [64]
+  policy_hyperparams:
+    <<: *microrts-squnet-map64-64ch-policy-defaults
+    load_path: downloaded_models/ppo-Microrts-squnet-map64-64ch-selfplay-S1-best
+  hyperparam_transitions_kwargs:
+    <<: *shaped-finetuning-hyperparam-transitions
+  algo_hyperparams:
+    <<: *microrts-squnet-map64-64ch-algo-defaults
+    batch_size: 512
+
+Microrts-selfplay-dc-phases-maps24: &microrts-sp-dc-phases-m24-defaults
+  <<: *microrts-sp-dc-phases-defaults
+  env_hyperparams:
+    <<: *microrts-sp-dc-phases-env-defaults
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/DoubleGame24x24.xml # 24x24
+      # - maps/BWDistantResources32x32.xml # 32x32
+      # - maps/BroodWar/(4)BloodBath.scmB.xml # 64x64
+  algo_hyperparams:
+    <<: *microrts-sp-dc-phases-algo-defaults
+    batch_size: 1536
+
+Microrts-selfplay-dc-phases-final: &microrts-sp-dc-phases-final-defaults
+  <<: *microrts-sp-dc-phases-defaults
+  n_timesteps: !!float 100e6
+  env_hyperparams:
+    <<: *microrts-sp-dc-phases-env-defaults
+    n_envs: 32
+    make_kwargs:
+      <<: *microrts-selfplay-env-make-kwargs-defaults
+      num_selfplay_envs: 48
+      max_steps: 8000
+    self_play_kwargs:
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      num_old_policies: 16
+      save_steps: 600000
+      window: 66 # 40M steps window
+      swap_steps: 10000
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/DoubleGame24x24.xml # 24x24
+      - maps/BWDistantResources32x32.xml # 32x32
+      - maps/BroodWar/(4)BloodBath.scmB.xml # 64x64
+  rollout_hyperparams:
+    <<: *microrts-ai-rollout-defaults
+    n_steps: 128
+  algo_hyperparams:
+    <<: *microrts-sp-dc-phases-algo-defaults
+    batch_size: 128
+  hyperparam_transitions_kwargs:
+    phases:
+      - multi_reward_weights: [0, 0.67, 0.33] # Win-loss sparse rewards
+        vf_coef: [0, 0.4, 0.3]
+        ent_coef: 0.01
+        learning_rate: !!float 1e-4
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.001
+        learning_rate: !!float 5e-5
+    durations:
+      - 0.5
+      - 0.4
+      - 0.1
+
+Microrts-squnet-d16-128-map16-finetune: &microrts-squnet-d16-128-map16-finetune
+  <<: *microrts-squnet-deep16-128
+  n_timesteps: !!float 200e6
+  env_hyperparams: &microrts-squnet-d16-128-map16-env-defaults
+    <<: *microrts-squnet-map16-env-defaults
+    n_envs: 36
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/16x16/EightBasesWorkers16x16.xml
+    bots:
+      coacAI: 6
+      mayari: 6
+    self_play_kwargs:
+      <<: *microrts-selfplay-self-play-kwargs-defaults
+      save_steps: !!float 1e6
+      window: 50
+    make_kwargs: &microrts-squnet-d16-128-map16-env-make-kwargs
+      <<: *microrts-squnet-map16-env-make-kwargs-defaults
+      num_selfplay_envs: 36
+  policy_hyperparams:
+    <<: *microrts-squnet-deep16-128-policy-defaults
+    load_run_path: sgoodfriend/rl-algo-impls-microrts-2023/v1pqohx9
+    load_run_path_best: true
+  hyperparam_transitions_kwargs:
+    <<: *shaped-finetuning-hyperparam-transitions
+
+Microrts-squnet-d16-128-map16-sc-cos-ga-selfplay-a10:
+  &microrts-squnet-d16-128-map16-sc-cos-ga-selfplay-a10
+  <<: *microrts-squnet-d16-128-sc-cos-ga-selfplay-a10
+  env_hyperparams:
+    <<: *microrts-squnet-d16-128-map16-env-defaults
+
+Microrts-squnet-d16-128-map32-finetune: &microrts-squnet-d16-128-map32-finetune
+  <<: *microrts-squnet-d16-128-map16-finetune
+  env_hyperparams:
+    <<: *microrts-squnet-map32-env-defaults
+  eval_hyperparams:
+    <<: *microrts-squnet-map32-eval-defaults
+  algo_hyperparams:
+    <<: *microrts-squnet-deep16-128-algo-defaults
+    batch_size: 1024
+
+Microrts-squnet-d16-128-map64-finetune: &microrts-squnet-d16-128-map64-finetune
+  <<: *microrts-squnet-d16-128-map16-finetune
+  env_hyperparams:
+    <<: *microrts-squnet-map64-env-defaults
+  eval_hyperparams:
+    <<: *microrts-squnet-map64-eval-defaults
+  algo_hyperparams:
+    <<: *microrts-squnet-deep16-128-algo-defaults
+    batch_size: 48
+    gradient_accumulation: true
+  hyperparam_transitions_kwargs:
+    phases:
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0.2, 0.4, 0.2]
+        ent_coef: 0.01
+        learning_rate: !!float 5e-5
+      - multi_reward_weights: [0.4, 0.5, 0.1] # Sparse + Shaped rewards
+        vf_coef: [0.3, 0.4, 0.1]
+        ent_coef: 0.01
+        learning_rate: !!float 1e-4
+      - multi_reward_weights: [0, 0.99, 0.01] # Win-loss sparse rewards
+        vf_coef: [0, 0.5, 0.1]
+        ent_coef: 0.0001
+        learning_rate: !!float 2e-5
+    durations:
+      - 0
+      - 0.05
+      - 0.3
+      - 0.2
+      - 0.45
+
+Microrts-squnet-d16-128-iMayari: &microrts-squnet-d16-128-imayari
+  <<: *microrts-squnet-deep16-128
+  n_timesteps: !!float 100e6
+  rollout_type: reference
+  env_hyperparams: &microrts-squnet-d16-128-imayari-env
+    <<: *microrts-squnet-map16-env-defaults
+    n_envs: 36
+    env_type: microrts_bots
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/16x16/EightBasesWorkers16x16.xml
+    make_kwargs:
+      max_steps: 4000
+      reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+    self_play_kwargs: null
+    reference_bot: mayari
+    bots:
+      mayari: 6
+      coacAI: 12
+      lightRushAI: 12
+    additional_win_loss_reward: false
+    score_reward_kwargs: null
+  rollout_hyperparams:
+    <<: *microrts-ai-rollout-defaults
+    # scale_advantage_by_values_accuracy: true
+    gamma: 0.999
+    gae_lambda: 0.99
+  policy_hyperparams: &microrts-squnet-d16-128-imayari-policy
+    <<: *microrts-squnet-deep16-128-policy-defaults
+    additional_critic_activation_functions: []
+    output_activation_fn: tanh
+  algo_hyperparams: &microrts-squnet-d16-128-imayari-algo-defaults
+    <<: *microrts-squnet-deep16-128-algo-defaults
+    batch_size: 3072
+    n_epochs: 1
+    gradient_accumulation: true
+    learning_rate: !!float 1e-5
+    vf_coef: 0.5
+    ent_coef: 0.0001
+    clip_range_vf: 0.1
+    normalize_advantage: false
+    kl_cutoff: 0.01
+  eval_hyperparams:
+    <<: *microrts-squnet-map16-eval-defaults
+    env_overrides:
+      <<: *microrts-squnet-map16-eval-env-overrides
+      env_type: microrts
+    skip_evaluate_at_start: true
+
+Microrts-squnet-d16-128-BC-oppo: &microrts-squnet-d16-128-bc-oppo
+  <<: *microrts-squnet-d16-128-imayari
+  policy_hyperparams: &microrts-squnet-d16-128-bc-oppo-policy
+    <<: *microrts-squnet-d16-128-imayari-policy
+    load_path: downloaded_models/acbc-Microrts-squnet-d16-128-iMayari-nondeterministic-S1-best
+
+Microrts-squnet-d16-128-BC-finetune: &microrts-squnet-d16-128-bc-finetune
+  <<: *microrts-squnet-deep16-128
+  n_timesteps: !!float 100e6
+  policy_hyperparams:
+    <<: *microrts-squnet-d16-128-bc-oppo-policy
+  env_hyperparams:
+    <<: *microrts-squnet-d16-128-map16-env-defaults
+    make_kwargs:
+      <<: *microrts-squnet-d16-128-map16-env-make-kwargs
+      reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+    additional_win_loss_reward: false
+    score_reward_kwargs: null
+  rollout_hyperparams: &microrts-squnet-d16-128-bc-finetune-rollout
+    <<: *microrts-ai-rollout-defaults
+    gamma: 0.999
+    gae_lambda: 0.99
+  algo_hyperparams: &microrts-squnet-d16-128-bc-finetune-algo
+    <<: *microrts-squnet-deep16-128-algo-defaults
+    batch_size: 3072
+    vf_coef: 0.5
+    ent_coef: 0.0001
+  hyperparam_transitions_kwargs:
+    &microrts-squnet-d16-128-bc-finetune-transitions
+    interpolate_method: cosine
+    phases:
+      - learning_rate: !!float 1e-5
+        ent_coef: 0.001
+      - learning_rate: !!float 5e-5
+        ent_coef: 0.001
+      - learning_rate: !!float 1e-5
+        ent_coef: 0.0001
+    durations:
+      - 0
+      - 0.05
+      - 0.4
+      - 0.35
+      - 0.2
+  eval_hyperparams:
+    <<: *microrts-squnet-map16-eval-defaults
+
+Microrts-squnet-d16-128-map32-BC-finetune:
+  &microrts-squnet-d16-128-map32-bc-finetune
+  <<: *microrts-squnet-d16-128-bc-finetune
+  n_timesteps: !!float 200e6
+  env_hyperparams:
+    <<: *microrts-squnet-map32-env-defaults
+    make_kwargs:
+      <<: *microrts-squnet-map32-env-make-kwargs
+      reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+    additional_win_loss_reward: false
+    score_reward_kwargs: null
+    self_play_kwargs:
+      <<: *microrts-squnet-map32-env-self-play-kwargs
+      save_steps: !!float 1e6
+      window: 50
+  rollout_hyperparams: &microrts-squnet-d16-128-map32-bc-finetune-rollout
+    <<: *microrts-squnet-d16-128-bc-finetune-rollout
+    full_batch_off_accelerator: true
+    gamma: 0.9996
+    gae_lambda: 0.99
+  policy_hyperparams: &microrts-squnet-d16-128-map32-bc-finetune-policy
+    <<: *microrts-squnet-d16-128-imayari-policy
+    load_path: downloaded_models/acbc-Microrts-squnet-d16-128-iMayari-map32-S1-best
+  eval_hyperparams:
+    <<: *microrts-squnet-map32-eval-defaults
+  algo_hyperparams: &microrts-squnet-d16-128-map32-bc-finetune-algo
+    <<: *microrts-squnet-d16-128-bc-finetune-algo
+    batch_size: 1536
+
+Microrts-squnet-d16-128-map32-BC-finetune-A10:
+  &microrts-squnet-d16-128-map32-bc-finetune-a10
+  <<: *microrts-squnet-d16-128-map32-bc-finetune
+  algo_hyperparams:
+    <<: *microrts-squnet-d16-128-map32-bc-finetune-algo
+    batch_size: 768
+    gradient_accumulation: true
+
+Microrts-squnet-d16-128-map64-BC-finetune:
+  &microrts-squnet-d16-128-map64-bc-finetune
+  <<: *microrts-squnet-d16-128-map32-bc-finetune
+  env_hyperparams:
+    <<: *microrts-squnet-map64-env-defaults
+    n_envs: 48
+    make_kwargs:
+      <<: *microrts-squnet-map64-env-make-kwargs
+      reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+      num_selfplay_envs: 52
+    bots:
+      workerRushAI: 2
+      lightRushAI: 2
+      coacAI: 2
+      mayari: 2
+    additional_win_loss_reward: false
+    score_reward_kwargs: null
+    self_play_kwargs:
+      <<: *microrts-squnet-map64-env-self-play-kwargs
+      save_steps: !!float 1e6
+      window: 50
+      num_old_policies: 12
+  policy_hyperparams:
+    <<: *microrts-squnet-d16-128-imayari-policy
+    load_run_path: sgoodfriend/rl-algo-impls-microrts-2023/uksp6znl
+  eval_hyperparams: &microrts-squnet-d16-128-map64-bc-finetune-eval
+    <<: *microrts-squnet-map64-eval-defaults
+  rollout_hyperparams: &microrts-squnet-d16-128-map64-bc-finetune-rollout
+    <<: *microrts-squnet-d16-128-map32-bc-finetune-rollout
+    gamma: 0.9999
+    gae_lambda: 0.99
+  algo_hyperparams: &microrts-squnet-d16-128-map64-bc-finetune-algo
+    <<: *microrts-squnet-d16-128-map32-bc-finetune-algo
+    batch_size: 384
+    gradient_accumulation: true
+    vf_coef: 0.2
+  hyperparam_transitions_kwargs:
+    interpolate_method: cosine
+    phases:
+      - learning_rate: !!float 5e-5
+        ent_coef: 0
+        freeze_policy_head: true
+        freeze_backbone: true
+      - learning_rate: !!float 1e-6
+        ent_coef: 0.001
+        freeze_policy_head: false
+        freeze_backbone: false
+      - learning_rate: !!float 2.5e-5
+        ent_coef: 0.001
+        freeze_policy_head: false
+        freeze_backbone: false
+      - learning_rate: !!float 1e-6
+        ent_coef: 0.0001
+        freeze_policy_head: false
+        freeze_backbone: false
+    durations:
+      - 0.01
+      - 0
+      - 0
+      - 0.24
+      - 0.5
+      - 0.23
+      - 0.02
+
+Microrts-squnet-d16-128-map64-BC-finetune-A10:
+  &microrts-squnet-d16-128-map64-bc-finetune-a10
+  <<: *microrts-squnet-d16-128-map64-bc-finetune
+  algo_hyperparams:
+    <<: *microrts-squnet-d16-128-map64-bc-finetune-algo
+    batch_size: 192
+
+Microrts-env16-80m-ent5-lr3c-mgn2-shaped-rew-nga-a100:
+  &microrts-env16-80m-ent5-lr3c-mgn2-shaped-rew-nga-a100
+  additional_keys_to_log:
+    - microrts_stats
+    - microrts_results
+    - results
+    - action_mask_stats
+  algo_hyperparams: &env16-algo
+    autocast_loss: true
+    batch_size: 4608
+    clip_range: 0.1
+    clip_range_vf: null
+    ent_coef: 0.005
+    gradient_accumulation: false
+    learning_rate: !!float 3e-4
+    max_grad_norm: 2
+    n_epochs: 2
+    ppo2_vf_coef_halving: true
+    vf_coef: 0.5
+  checkpoints_kwargs:
+    history_size: 2
+  device_hyperparams:
+    set_float32_matmul_precision: high
+    use_deterministic_algorithms: false
+  env_hyperparams: &env16-env
+    additional_win_loss_reward: false
+    bots:
+      workerRushAI: 6
+      lightRushAI: 6
+      coacAI: 6
+      mayari: 6
+    env_type: microrts
+    make_kwargs: &env16-env-make-kwargs
+      bot_envs_alternate_player: true
+      map_paths:
+        - maps/16x16/basesWorkers16x16.xml
+      max_steps: 4000
+      num_selfplay_envs: 72
+      render_theme: 2
+      reward_weight:
+        - 10.0 # RAIWinLossRewardFunction
+        - 1.0 # ResourceGatherRewardFunction
+        - 1.0 # ProduceWorkerRewardFunction
+        - 0.2 # ProduceBuildingRewardFunction
+        - 1.0 # AttackRewardFunction
+        - 4.0 # ProduceLightUnitRewardFunction
+        - 5.25 # ProduceHeavyUnitRewardFunction
+        - 6.0 # ProduceRangedUnitRewardFunction
+        - 0.0 # ScoreRewardFunction
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+      - maps/16x16/TwoBasesBarracks16x16.xml
+      - maps/8x8/basesWorkers8x8A.xml
+      - maps/8x8/FourBasesWorkers8x8.xml
+      - maps/NoWhereToRun9x8.xml
+      - maps/16x16/EightBasesWorkers16x16.xml
+    n_envs: 72
+    play_checkpoints_kwargs:
+      n_envs_against_checkpoints: 24
+    score_reward_kwargs: null
+    self_play_kwargs: null
+    valid_sizes:
+      - 16
+  env_id: Microrts-squnet-map16
+  eval_hyperparams: &env16-eval
+    deterministic: false
+    env_overrides: &env16-eval-env-overrides
+      additional_win_loss_reward: false
+      bots:
+        coacAI: 2
+        droplet: 2
+        guidedRojoA3N: 2
+        izanagi: 2
+        lightRushAI: 2
+        mayari: 2
+        mixedBot: 2
+        naiveMCTSAI: 2
+        passiveAI: 2
+        randomAI: 2
+        randomBiasedAI: 2
+        rojo: 2
+        tiamat: 2
+        workerRushAI: 2
+      make_kwargs: &env16-eval-env-make-kwargs
+        bot_envs_alternate_player: false
+        map_paths:
+          - maps/16x16/basesWorkers16x16A.xml
+        max_steps: 4000
+        num_selfplay_envs: 0
+        render_theme: 2
+        reward_weight:
+          - 1.0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+      map_paths: []
+      n_envs: 28
+      play_checkpoints_kwargs: null
+      score_reward_kwargs: {}
+      self_play_kwargs: {}
+    max_video_length: 4000
+    n_episodes: 28
+    score_function: mean
+    skip_evaluate_at_start: true
+    step_freq: !!float 2.5e6
+  n_timesteps: !!float 80e6
+  policy_hyperparams: &env16-policy
+    actor_head_style: squeeze_unet
+    additional_critic_activation_functions: []
+    channels_per_level:
+      - 128
+      - 128
+      - 128
+    decoder_residual_blocks_per_level:
+      - 2
+      - 3
+    deconv_strides_per_level:
+      - - 2
+        - 2
+      - - 2
+        - 2
+    encoder_residual_blocks_per_level:
+      - 3
+      - 2
+      - 4
+    normalization: layer
+    output_activation_fn: identity
+    strides_per_level:
+      - 4
+      - 4
+    subaction_mask:
+      0:
+        1: 1
+        2: 2
+        3: 3
+        4: 4
+        5: 4
+        6: 5
+  rollout_hyperparams:
+    full_batch_off_accelerator: true
+    gae_lambda: 0.95
+    gamma: 0.999
+    n_steps: 512
+
+Microrts-env16-80m-ent5-lr3c-mgn2-info-rew-vf24-nga-a100:
+  &microrts-env16-80m-ent5-lr3c-mgn2-info-rew-vf24-nga-a100
+  <<: *microrts-env16-80m-ent5-lr3c-mgn2-shaped-rew-nga-a100
+  algo_hyperparams: &env16-info-rew-vf24-algo
+    <<: *env16-algo
+    multi_reward_weights:
+      - 1.0 # RAIWinLossRewardFunction
+      - 0.1 # ResourceGatherRewardFunction
+      - 0.1 # ProduceWorkerRewardFunction
+      - 0.1 # ProduceBuildingRewardFunction
+      - 0.1 # AttackRewardFunction
+      - 0.1 # ProduceLightUnitRewardFunction
+      - 0.1 # ProduceHeavyUnitRewardFunction
+      - 0.1 # ProduceRangedUnitRewardFunction
+      - 0.0 # ScoreRewardFunction
+    vf_coef: 0.24
+    vf_loss_fn: huber_loss
+    vf_weights:
+      - 1.0 # RAIWinLossRewardFunction
+      - 0.5 # ResourceGatherRewardFunction
+      - 0.5 # ProduceWorkerRewardFunction
+      - 0.5 # ProduceBuildingRewardFunction
+      - 0.5 # AttackRewardFunction
+      - 0.5 # ProduceLightUnitRewardFunction
+      - 0.5 # ProduceHeavyUnitRewardFunction
+      - 0.5 # ProduceRangedUnitRewardFunction
+      - 0.5 # ScoreRewardFunction
+  env_hyperparams: &env16-info-rew-env
+    <<: *env16-env
+    info_rewards:
+      info_paths:
+        - [raw_rewards, ResourceGatherRewardFunction]
+        - [raw_rewards, ProduceWorkerRewardFunction]
+        - [raw_rewards, ProduceBuildingRewardFunction]
+        - [raw_rewards, AttackRewardFunction]
+        - [raw_rewards, ProduceLightUnitRewardFunction]
+        - [raw_rewards, ProduceHeavyUnitRewardFunction]
+        - [raw_rewards, ProduceRangedUnitRewardFunction]
+        - [raw_rewards, ScoreRewardFunction]
+      episode_end: false
+    make_kwargs: &env16-info-rew-env-make-kwargs
+      <<: *env16-env-make-kwargs
+      reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+    normalize: true
+    normalize_kwargs:
+      clip_reward: 1
+      emv_window_size: !!float 5e6
+      exponential_moving_mean_var_reward: true
+      gamma_reward: 0.999
+      norm_obs: false
+      norm_reward: true
+  eval_hyperparams: &env16-info-rew-eval
+    <<: *env16-eval
+    env_overrides: &env16-info-rew-eval-env-overrides
+      <<: *env16-eval-env-overrides
+      info_rewards: null
+    only_checkpoint_best_policies: true
+  policy_hyperparams: &env16-info-rew-policy
+    <<: *env16-policy
+    additional_critic_activation_functions:
+      - identity # ResourceGatherRewardFunction
+      - identity # ProduceWorkerRewardFunction
+      - identity # ProduceBuildingRewardFunction
+      - identity # AttackRewardFunction
+      - identity # ProduceLightUnitRewardFunction
+      - identity # ProduceHeavyUnitRewardFunction
+      - identity # ProduceRangedUnitRewardFunction
+      - identity # ScoreRewardFunction
+    output_activation_fn: identity
+    shared_critic_head: true
+
+Microrts-env16-80m-ent5-lr3c-mgn2-info-rew-vf50-nga-a100:
+  &microrts-env16-80m-ent5-lr3c-mgn2-info-rew-vf50-nga-a100
+  <<: *microrts-env16-80m-ent5-lr3c-mgn2-info-rew-vf24-nga-a100
+  algo_hyperparams: &env16-info-rew-vf50-algo
+    <<: *env16-info-rew-vf24-algo
+    vf_coef: 0.5
+
+Microrts-env16-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100:
+  &microrts-env16-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100
+  <<: *microrts-env16-80m-ent5-lr3c-mgn2-info-rew-vf50-nga-a100
+  algo_hyperparams: &env16-05wb2lwr-vf50-algo
+    <<: *env16-info-rew-vf50-algo
+    multi_reward_weights:
+      - 1.0 # RAIWinLossRewardFunction
+      - 0.1 # ResourceGatherRewardFunction
+      - 0.05 # ProduceWorkerRewardFunction
+      - 0.05 # ProduceBuildingRewardFunction
+      - 0.1 # AttackRewardFunction
+      - 0.2 # ProduceLightUnitRewardFunction
+      - 0.2 # ProduceHeavyUnitRewardFunction
+      - 0.2 # ProduceRangedUnitRewardFunction
+      - 0.0 # ScoreRewardFunction
+
+Microrts-bw16a-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100:
+  &microrts-bw16a-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100
+  <<: *microrts-env16-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100
+  env_hyperparams: &microrts-bw16a-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100-env
+    <<: *env16-info-rew-env
+    map_paths:
+      - maps/16x16/basesWorkers16x16A.xml
+
+Microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10:
+  &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10
+  <<: *microrts-bw16a-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100
+  algo_hyperparams:
+    &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10-algo
+    <<: *env16-05wb2lwr-vf50-algo
+    batch_size: 16384
+  env_hyperparams:
+    &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10-env
+    <<: *microrts-bw16a-80m-ent5-lr3c-mgn2-05wb2lwr-vf50-nga-a100-env
+    bots:
+      coacAI: 12
+      mayari: 12
+    make_kwargs:
+      &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10-env-make-kwargs
+      <<: *env16-info-rew-env-make-kwargs
+      map_paths:
+        - maps/8x8/basesWorkers8x8A.xml
+      max_steps: 3000
+      num_selfplay_envs: 64
+    map_paths:
+      - maps/8x8/basesWorkers8x8A.xml
+    n_envs: 64
+    play_checkpoints_kwargs:
+      n_envs_against_checkpoints: 24
+    valid_sizes: [8]
+  eval_hyperparams:
+    &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10-eval
+    <<: *env16-info-rew-eval
+    env_overrides:
+      &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10-eval-env-overrides
+      <<: *env16-info-rew-eval-env-overrides
+      make_kwargs:
+        &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10-eval-make-kwargs
+        <<: *env16-eval-env-make-kwargs
+        map_paths:
+          - maps/8x8/basesWorkers8x8A.xml
+        max_steps: 3000
+  policy_hyperparams:
+    &microrts-bw8a-80m-ent5-lr3c-05wb2lwr-vf50-nga-grid2seq-a10-policy
+    actor_head_style: grid2seq_transformer
+    additional_critic_activation_functions:
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+    critic_strides: [4]
+    encoder_embed_dim: 64
+    encoder_attention_heads: 4
+    encoder_feed_forward_dim: 256
+    encoder_layers: 4
+    normalization: layer
+    output_activation_fn: identity
+    shared_critic_head: true
+    subaction_mask:
+      0:
+        1: 1
+        2: 2
+        3: 3
+        4: 4
+        5: 4
+        6: 5
+
+Microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10:
+  &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  additional_keys_to_log:
+    - microrts_stats
+    - microrts_results
+    - results
+    - action_mask_stats
+  algo_hyperparams:
+    &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-algo
+    autocast_loss: true
+    batch_size: 1024
+    clip_range: 0.2
+    clip_range_vf: 0.2
+    ent_coef: 0.1
+    gradient_accumulation: false
+    learning_rate: 0.001
+    max_grad_norm: 2
+    n_epochs: 3
+    ppo2_vf_coef_halving: true
+    vf_coef: 0.5
+  device_hyperparams:
+    &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-device
+    set_float32_matmul_precision: high
+    use_deterministic_algorithms: false
+  env_hyperparams:
+    &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env
+    bots:
+      coacAI: 24
+    env_type: microrts
+    make_kwargs:
+      &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env-make-kwargs
+      map_paths: [maps/10x10/basesTwoWorkers10x10.xml]
+      reward_weight: [10.0, 1.0, 1.0, 0.2, 1.0, 4.0, 4.0, 4.0, 0]
+      max_steps: 2000
+    n_envs: 24
+    valid_sizes: [10]
+  env_id: Microrts-baseWorkers10x10
+  eval_hyperparams:
+    &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval
+    deterministic: false
+    env_overrides:
+      &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-env-overrides
+      bots:
+        coacAI: 8
+      info_rewards: null
+      make_kwargs:
+        &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-make-kwargs
+        map_paths: [maps/10x10/basesTwoWorkers10x10.xml]
+        max_steps: 2000
+        reward_weight:
+          - 1.0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+      n_envs: 8
+    max_video_length: 2000
+    n_episodes: 8
+    only_checkpoint_best_policies: true
+    score_function: mean
+    skip_evaluate_at_start: true
+    step_freq: !!float 5e5
+  hyperparam_transitions_kwargs:
+    &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-transitions
+    phases:
+      - learning_rate: 0.001
+        ent_coef: 0.1
+      - learning_rate: 0
+        ent_coef: 0
+    durations: [0, 1, 0]
+  n_timesteps: !!float 1e6
+  policy_hyperparams:
+    &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-policy
+    actor_head_style: grid2seq_transformer
+    critic_channels: 32
+    critic_strides:
+      - 2
+    encoder_attention_heads: 2
+    encoder_embed_dim: 32
+    encoder_feed_forward_dim: 128
+    encoder_layers: 2
+    normalization: layer
+    output_activation_fn: identity
+    subaction_mask:
+      0:
+        1: 1
+        2: 2
+        3: 3
+        4: 4
+        5: 4
+        6: 5
+  rollout_hyperparams:
+    &microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-rollout
+    full_batch_off_accelerator: false
+    gae_lambda: 0.95
+    gamma: 0.99
+    n_steps: 256
+
+Microrts-bw10-2m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10:
+  &microrts-bw10-2m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  n_timesteps: !!float 2e6
+
+Microrts-bw10-3m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10:
+  &microrts-bw10-3m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  n_timesteps: !!float 3e6
+
+Microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10:
+  &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  env_hyperparams:
+    &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env
+    make_kwargs:
+      &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env-make-kwargs
+      <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env-make-kwargs
+      always_player_1: true
+  eval_hyperparams:
+    &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval
+    env_overrides:
+      &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-env-overrides
+      <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-env-overrides
+      make_kwargs:
+        &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-make-kwargs
+        <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-make-kwargs
+        always_player_1: true
+
+Microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10:
+  &microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  n_timesteps: !!float 2e6
+
+Microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10:
+  &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10
+  <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10
+  algo_hyperparams:
+    &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-algo
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-algo
+    ent_coef: 0.05
+    scale_loss_by_has_actions: true
+  env_hyperparams:
+    &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-env
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env
+    make_kwargs:
+      &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-env-make-kwargs
+      <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env-make-kwargs
+      always_player_1: true
+      reward_weight: [10.0, 1.0, 1.0, 0.2, 1.0, 4.0, 5.25, 6.0, 0]
+  hyperparam_transitions_kwargs:
+    phases:
+      - learning_rate: 0.001
+        ent_coef: 0.05
+      - learning_rate: 0
+        ent_coef: 0
+    durations: [0, 1, 0]
+  policy_hyperparams:
+    &microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+    actor_head_style: grid2entity_transformer
+    encoder_attention_heads: 2
+    encoder_embed_dim: 32
+    encoder_feed_forward_dim: 128
+    encoder_layers: 2
+    feature_mask: [3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14]
+    hidden_critic_dims: []
+    normalization: layer
+    normalize_input: true
+    normalize_input_feature_indexes: [-2, -1]
+    output_activation_fn: identity
+    pre_backbone_normalization: layer
+    post_backbone_normalization: null
+    subaction_mask:
+      0:
+        1: 1
+        2: 2
+        3: 3
+        4: 4
+        5: 4
+        6: 5
+    value_output_gain: 0.02
+
+Microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10:
+  &microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10
+  <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10
+  n_timesteps: !!float 2e6
+
+Microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-grid2entity-diverse-eval-a10:
+  &microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-grid2entity-diverse-eval-a10
+  <<: *microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10
+  eval_hyperparams:
+    &microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-grid2entity-diverse-eval-a10-eval
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval
+    env_overrides:
+      &microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-grid2entity-diverse-eval-a10-env-overrides
+      <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-env-overrides
+      bots:
+        coacAI: 2
+        droplet: 2
+        guidedRojoA3N: 2
+        izanagi: 2
+        lightRushAI: 2
+        mayari: 2
+        mixedBot: 2
+        naiveMCTSAI: 2
+        passiveAI: 2
+        randomAI: 2
+        randomBiasedAI: 2
+        rojo: 2
+        tiamat: 2
+        workerRushAI: 2
+      info_rewards: null
+      n_envs: 28
+      play_checkpoints_kwargs: null
+
+Microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10:
+  &microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10
+  <<: *microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-grid2entity-diverse-eval-a10
+  env_hyperparams:
+    &microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-env
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env
+  eval_hyperparams:
+    &microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-eval
+    <<: *microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-grid2entity-diverse-eval-a10-eval
+    env_overrides:
+      &microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-eval-env-overrides
+      <<: *microrts-bw10-p1-2m-ent100d-lr10d-shaped-rew-grid2entity-diverse-eval-a10-env-overrides
+      make_kwargs:
+        &microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-eval-make-kwargs
+        <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-make-kwargs
+        always_player_1: false
+
+Microrts-bw10-adv-bots-2m-ent100d-lr10d-shaped-rew-grid2entity-a10:
+  &microrts-bw10-adv-bots-2m-ent100d-lr10d-shaped-rew-grid2entity-a10
+  <<: *microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10
+  env_hyperparams:
+    &microrts-bw10-adv-bots-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-env
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env
+    bots:
+      coacAI: 12
+      mayari: 12
+
+Microrts-bw10-2m-ent100d-lr10d-shaped-rew-grid2entity-a10:
+  &microrts-bw10-2m-ent100d-lr10d-shaped-rew-grid2entity-a10
+  <<: *microrts-bw10-adv-bots-2m-ent100d-lr10d-shaped-rew-grid2entity-a10
+  checkpoints_kwargs:
+    history_size: 1
+  env_hyperparams:
+    &microrts-bw10-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-env
+    <<: *microrts-bw10-adv-bots-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-env
+    bots:
+      coacAI: 6
+      mayari: 6
+    make_kwargs:
+      &microrts-bw10-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-env-make-kwargs
+      <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-env-make-kwargs
+      num_selfplay_envs: 18
+    n_envs: 24
+    play_checkpoints_kwargs:
+      n_envs_against_checkpoints: 6
+
+Microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10:
+  &microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10
+  <<: *microrts-bw10-2m-ent100d-lr10d-shaped-rew-grid2entity-a10
+  algo_hyperparams:
+    &microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-algo
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-algo
+    multi_reward_weights:
+      - 1.0 # RAIWinLossRewardFunction
+      - 0.1 # ResourceGatherRewardFunction
+      - 0.05 # ProduceWorkerRewardFunction
+      - 0.05 # ProduceBuildingRewardFunction
+      - 0.1 # AttackRewardFunction
+      - 0.2 # ProduceLightUnitRewardFunction
+      - 0.2 # ProduceHeavyUnitRewardFunction
+      - 0.2 # ProduceRangedUnitRewardFunction
+      - 0.0 # ScoreRewardFunction
+    vf_coef: 0.24
+    vf_weights:
+      - 1.0 # RAIWinLossRewardFunction
+      - 0.5 # ResourceGatherRewardFunction
+      - 0.5 # ProduceWorkerRewardFunction
+      - 0.5 # ProduceBuildingRewardFunction
+      - 0.5 # AttackRewardFunction
+      - 0.5 # ProduceLightUnitRewardFunction
+      - 0.5 # ProduceHeavyUnitRewardFunction
+      - 0.5 # ProduceRangedUnitRewardFunction
+      - 0.5 # ScoreRewardFunction
+  env_hyperparams:
+    &microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-env
+    <<: *microrts-bw10-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-env
+    info_rewards:
+      info_paths:
+        - [raw_rewards, ResourceGatherRewardFunction]
+        - [raw_rewards, ProduceWorkerRewardFunction]
+        - [raw_rewards, ProduceBuildingRewardFunction]
+        - [raw_rewards, AttackRewardFunction]
+        - [raw_rewards, ProduceLightUnitRewardFunction]
+        - [raw_rewards, ProduceHeavyUnitRewardFunction]
+        - [raw_rewards, ProduceRangedUnitRewardFunction]
+        - [raw_rewards, ScoreRewardFunction]
+      episode_end: false
+    make_kwargs:
+      &microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-env-make-kwargs
+      <<: *microrts-bw10-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-env-make-kwargs
+      reward_weight: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+    normalize: true
+    normalize_kwargs:
+      &microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-env-normalize-kwargs
+      clip_reward: 1
+      emv_window_size: !!float 1e6
+      exponential_moving_mean_var_reward: true
+      gamma_reward: 0.999
+      norm_obs: false
+      norm_reward: true
+  policy_hyperparams:
+    &microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-policy
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+    additional_critic_activation_functions:
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+      - identity
+  rollout_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-rollout
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-rollout
+    gamma: 0.999
+
+Microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10:
+  &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10
+  <<: *microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10
+  eval_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-eval
+    <<: *microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-eval
+    step_freq: !!float 1e6
+  n_timesteps: !!float 10e6
+
+Microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4l-a10:
+  &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4l-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4l-a10-policy
+    <<: *microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-policy
+    encoder_layers: 4
+
+Microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-a10:
+  &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4l-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4l-a10-policy
+    encoder_attention_heads: 4
+    encoder_embed_dim: 64
+    encoder_feed_forward_dim: 256
+
+Microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10:
+  &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-a10-policy
+    hidden_embedding_dims: [256]
+
+Microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-a10:
+  &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10
+  hyperparam_transitions_kwargs:
+    &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-a10-hyperparam-transitions
+    durations: [0, 1, 0]
+    interpolate_method: cosine
+    phases:
+      - learning_rate: 0.001
+        ent_coef: 0.1
+      - learning_rate: !!float 1e-5
+        ent_coef: 0
+
+Microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4l-a10:
+  &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4l-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4l-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4l-a10-policy
+
+Microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-a10:
+  &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4l-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-a10-policy
+
+Microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10:
+  &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10-policy
+
+Microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10:
+  &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-a10
+  env_hyperparams: &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10-env
+    <<: *microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-env
+    normalize_kwargs:
+      &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10-env-normalize-kwargs
+      <<: *microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-env-normalize-kwargs
+      emv_window_size: !!float 5e6
+
+Microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4l-a10:
+  &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4l-a10
+  <<: *microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4l-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4l-a10-policy
+
+Microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-a10:
+  &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-a10
+  <<: *microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-a10-policy
+
+Microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-ew-a10:
+  &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-ew-a10
+  <<: *microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-ew-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-4lw-ew-a10-policy
+
+Microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-a10:
+  &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-a10
+  <<: *microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-ew-a10
+  policy_hyperparams:
+    &microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-a10-policy
+    <<: *microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-4lw-ew-a10-policy
+    hidden_actor_dims: [128]
+    hidden_critic_dims: [128]
+
+Microrts-bw10-10m-ent10d-lr5d05-05wb2lwr-grid2entity-4lw-eavw-4l-a10:
+  &microrts-bw10-10m-ent10d-lr5d05-05wb2lwr-grid2entity-4lw-eavw-4l-a10
+  <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-a10
+  hyperparam_transitions_kwargs:
+    &microrts-bw10-10m-ent10d-lr5d05-05wb2lwr-grid2entity-4lw-eavw-4l-a10-hyperparam-transitions
+    <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-vf24-nga-grid2entity-a10-hyperparam-transitions
+    durations: [0, 1, 0]
+    interpolate_method: cosine
+    phases:
+      - learning_rate: !!float 5e-4
+        ent_coef: 0.01
+      - learning_rate: !!float 5e-5
+        ent_coef: 0
+
+Microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-4l-a10:
+  &microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-4l-a10
+  <<: *microrts-bw10-10m-ent10d-lr5d05-05wb2lwr-grid2entity-4lw-eavw-4l-a10
+  hyperparam_transitions_kwargs:
+    &microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-4l-a10-hyperparam-transitions
+    <<: *microrts-bw10-10m-ent10d-lr5d05-05wb2lwr-grid2entity-4lw-eavw-4l-a10-hyperparam-transitions
+    phases:
+      - learning_rate: !!float 1e-3
+        ent_coef: 0.01
+      - learning_rate: !!float 1e-5
+        ent_coef: 0
+
+Microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-clip10-grid2entity-a10:
+  &microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-clip10-grid2entity-a10
+  <<: *microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-4l-a10
+  env_hyperparams:
+    &microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-clip10-grid2entity-a10-env
+    <<: *microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10-env
+    normalize_kwargs:
+      &microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-clip10-grid2entity-a10-env-normalize-kwargs
+      <<: *microrts-bw10-10m-5emm-lr10d01-05wb2lwr-grid2entity-a10-env-normalize-kwargs
+      clip_reward: 10
+
+Microrts-bw10-10m-ent10d-lr10d01-05wb4lwr-clip10-grid2entity-a10:
+  &microrts-bw10-10m-ent10d-lr10d01-05wb4lwr-clip10-grid2entity-a10
+  <<: *microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-clip10-grid2entity-a10
+  algo_hyperparams:
+    &microrts-bw10-10m-ent10d-lr10d01-05wb4lwr-clip10-grid2entity-a10-algo
+    <<: *microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-algo
+    multi_reward_weights:
+      - 1.0 # RAIWinLossRewardFunction
+      - 0.1 # ResourceGatherRewardFunction
+      - 0.05 # ProduceWorkerRewardFunction
+      - 0.05 # ProduceBuildingRewardFunction
+      - 0.1 # AttackRewardFunction
+      - 0.4 # ProduceLightUnitRewardFunction
+      - 0.4 # ProduceHeavyUnitRewardFunction
+      - 0.4 # ProduceRangedUnitRewardFunction
+      - 0.0 # ScoreRewardFunction
+
+Microrts-bw10-2m-ent100d-lr10d01-05wb4lwr-clip10-grid2entity-small-a10:
+  &microrts-bw10-2m-ent100d-lr10d01-05wb4lwr-clip10-grid2entity-small-a10
+  <<: *microrts-bw10-10m-ent10d-lr10d01-05wb4lwr-clip10-grid2entity-a10
+  env_hyperparams:
+    &microrts-bw10-2m-ent100d-lr10d01-05wb4lwr-clip10-grid2entity-small-a10-env
+    <<: *microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-clip10-grid2entity-a10-env
+    normalize_kwargs:
+      &microrts-bw10-2m-ent100d-lr10d01-05wb4lwr-clip10-grid2entity-small-a10-env-normalize-kwargs
+      clip_reward: 10
+      gamma_reward: 0.999
+      norm_obs: false
+      norm_reward: true
+  hyperparam_transitions_kwargs:
+    &microrts-bw10-2m-ent100d-lr10d01-05wb4lwr-clip10-grid2entity-small-a10-hyperparam-transitions
+    <<: *microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-4l-a10-hyperparam-transitions
+    phases:
+      - learning_rate: !!float 1e-3
+        ent_coef: 0.1
+      - learning_rate: !!float 1e-5
+        ent_coef: 0
+  n_timesteps: !!float 2e6
+  policy_hyperparams:
+    &microrts-bw10-2m-ent100d-lr10d01-05wb4lwr-clip10-grid2entity-small-a10-policy
+    <<: *microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-policy
+
+Microrts-bw10-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10:
+  &microrts-bw10-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10
+  <<: *microrts-bw10-10m-ent10d-lr10d01-05wb4lwr-clip10-grid2entity-a10
+  n_timesteps: !!float 20e6
+
+Microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10:
+  &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10
+  <<: *microrts-bw10-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10
+  env_hyperparams:
+    &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-env
+    <<: *microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-clip10-grid2entity-a10-env
+    make_kwargs:
+      &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-env-make-kwargs
+      <<: *microrts-bw10-2m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-env-make-kwargs
+      map_paths: [maps/16x16/basesWorkers16x16A.xml]
+      max_steps: 4000
+    valid_sizes: [16]
+  eval_hyperparams:
+    &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-eval
+    <<: *microrts-bw10-10m-ent100d-lr10d-05wb2lwr-vf24-nga-grid2entity-a10-eval
+    env_overrides:
+      &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-eval-env-overrides
+      <<: *microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-eval-env-overrides
+      make_kwargs:
+        &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-eval-make-kwargs
+        <<: *microrts-bw10-coac-2m-ent100d-lr10d-shaped-rew-grid2entity-a10-eval-make-kwargs
+        map_paths: [maps/16x16/basesWorkers16x16A.xml]
+        max_steps: 4000
+
+Microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8l-a10:
+  &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8l-a10
+  <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10
+  policy_hyperparams:
+    &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8l-a10-policy
+    <<: *microrts-bw10-10m-ent100d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-a10-policy
+    encoder_layers: 8
+
+Microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8lw-a10:
+  &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8lw-a10
+  <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8l-a10
+  policy_hyperparams:
+    &microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8lw-a10-policy
+    <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8l-a10-policy
+    encoder_attention_heads: 4
+    encoder_embed_dim: 128
+    encoder_feed_forward_dim: 512
+
+Microrts-bw16a-20m-ent10d-lr10d01-b3072-05wb4lhr-grid2entity-8lw-a10:
+  &microrts-bw16a-20m-ent10d-lr10d01-b3072-05wb4lhr-grid2entity-8lw-a10
+  <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8lw-a10
+  algo_hyperparams:
+    &microrts-bw16a-20m-ent10d-lr10d01-b3072-05wb4lhr-grid2entity-8lw-a10-algo
+    <<: *microrts-bw10-10m-ent10d-lr10d01-05wb4lwr-clip10-grid2entity-a10-algo
+    batch_size: 3072
+
+Microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8lw-a10:
+  &microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8lw-a10
+  <<: *microrts-bw16a-20m-ent10d-lr10d01-b3072-05wb4lhr-grid2entity-8lw-a10
+  algo_hyperparams:
+    &microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8lw-a10-algo
+    <<: *microrts-bw16a-20m-ent10d-lr10d01-b3072-05wb4lhr-grid2entity-8lw-a10-algo
+    batch_size: 1536
+  n_timesteps: !!float 10e6
+  hyperparam_transitions_kwargs:
+    &microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8lw-a10-hyperparam-transitions
+    <<: *microrts-bw10-10m-ent10d-lr10d01-05wb2lwr-grid2entity-4lw-eavw-4l-a10-hyperparam-transitions
+    phases:
+      - learning_rate: !!float 5e-4
+        ent_coef: 0.01
+      - learning_rate: !!float 5e-5
+        ent_coef: 0
+
+Microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8l8w-a10:
+  &microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8l8w-a10
+  <<: *microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8lw-a10
+  policy_hyperparams:
+    &microrts-bw16a-10m-ent10d-lr5d05-b1536-05wb4lhr-grid2entity-8l8w-a10-policy
+    <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-8lw-a10-policy
+    encoder_attention_heads: 8
+
+Microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10:
+  &microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10
+  <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10
+  algo_hyperparams:
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-algo
+  env_hyperparams:
+    &microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10-env
+    <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-env
+    bots:
+      coacAI: 24
+    info_rewards: null
+    make_kwargs:
+      &microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10-env-make-kwargs
+      <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-env-make-kwargs
+      num_selfplay_envs: 0
+      reward_weight: [10.0, 1.0, 1.0, 0.2, 1.0, 4.0, 5.0, 6.0, 0]
+      always_player_1: true
+    normalize: false
+    normalize_kwargs: null
+    play_checkpoints_kwargs: null
+  eval_hyperparams:
+    &microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10-eval
+    <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-eval
+    env_overrides:
+      &microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10-eval-env-overrides
+      <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-eval-env-overrides
+      make_kwargs:
+        &microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10-eval-make-kwargs
+        <<: *microrts-bw16a-20m-ent10d-lr10d01-05wb4lhr-grid2entity-a10-eval-make-kwargs
+        always_player_1: true
+    step_freq: !!float 5e5
+  hyperparam_transitions_kwargs:
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-transitions
+  n_timesteps: !!float 1e6
+  policy_hyperparams:
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+
+Microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10:
+  &microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10
+  <<: *microrts-bw16a-1m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10
+  n_timesteps: !!float 2e6
+
+Microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4l-a10:
+  &microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4l-a10
+  <<: *microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-2l-a10
+  policy_hyperparams:
+    &microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4l-a10-policy
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+    encoder_layers: 4
+
+Microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-a10:
+  &microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-a10
+  <<: *microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4l-a10
+  policy_hyperparams:
+    &microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-a10-policy
+    <<: *microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4l-a10-policy
+    encoder_attention_heads: 4
+    encoder_embed_dim: 64
+    encoder_feed_forward_dim: 256
+
+Microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-ew-a10:
+  &microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-ew-a10
+  <<: *microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-a10
+  policy_hyperparams:
+    &microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-ew-a10-policy
+    <<: *microrts-bw16a-2m-ent100d-lr10d01-shaped-rew-grid2entity-4lw-a10-policy
+    hidden_embedding_dims: [256]
+    hidden_actor_dims: [128]
+    hidden_critic_dims: [128]
+
+Microrts-agent: &microrts-agent
+  <<: *microrts-sp-dc-phases-defaults
+  device: cpu
+  eval_hyperparams:
+    <<: *microrts-sp-dc-phases-eval-defaults
+    env_overrides:
+      <<: *microrts-sp-dc-phases-eval-env-overrides
+      n_envs: 1
+      self_play_kwargs:
+        save_steps: .inf
+        swap_steps: .inf
+      is_agent: true
+      valid_sizes: [16, 32, 64]
+      paper_planes_sizes: [16]
+      terrain_overrides:
+        maps/NoWhereToRun9x8.xml:
+          md5_hash: ac3b5a19643ee5816a1df17f2fadaae3
+          size: 12
+          use_paper_obs: true
+        maps/DoubleGame24x24.xml:
+          md5_hash: f112aaf99e09861a5d6c6ec195130fa7
+          size: 24
+          use_paper_obs: true
+        maps/BWDistantResources32x32.xml:
+          md5_hash: ee6e75dae5051fe746a68b39112921c4
+          size: 32
+          use_paper_obs: true
+        # maps/BroodWar/(4)BloodBath.scmB.xml:
+        #   md5_hash: 686eb7e687e50729cb134d3958d7814d
+        #   size: 64
+        #   use_paper_obs: true
+
+Microrts-b2w10-grid2entity-a10-vog1: &microrts-b2w10-grid2entity-a10-vog1
+  <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-vog1-policy
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+    value_output_gain: 1
+
+Microrts-b2w10-grid2entity-a10-scale-actions:
+  &microrts-b2w10-grid2entity-a10-scale-actions
+  <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10
+  algo_hyperparams: &microrts-b2w10-grid2entity-a10-scale-actions-algo
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-algo
+    scale_loss_by_has_actions: false
+    scale_loss_by_num_actions: true
+
+Microrts-b2w10-grid2entity-a10-base-rews:
+  &microrts-b2w10-grid2entity-a10-base-rews
+  <<: *microrts-b2w10-grid2entity-a10-scale-actions
+  env_hyperparams: &microrts-b2w10-grid2entity-a10-base-rews-env
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-env
+    make_kwargs: &microrts-b2w10-grid2entity-a10-base-rews-env-make-kwargs
+      <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-env-make-kwargs
+      reward_weight: [10.0, 1.0, 1.0, 0.2, 1.0, 4.0, 4.0, 4.0, 0]
+
+Microrts-b2w10-grid2entity-a10-no-autocast-loss:
+  &microrts-b2w10-grid2entity-a10-no-autocast-loss
+  <<: *microrts-b2w10-grid2entity-a10-base-rews
+  algo_hyperparams: &microrts-b2w10-grid2entity-a10-no-autocast-loss-algo
+    <<: *microrts-b2w10-grid2entity-a10-scale-actions-algo
+    autocast_loss: false
+
+Microrts-b2w10-grid2entity-a10-gamma999:
+  &microrts-b2w10-grid2entity-a10-gamma999
+  <<: *microrts-b2w10-grid2entity-a10-base-rews
+  rollout_hyperparams: &microrts-b2w10-grid2entity-a10-gamma999-rollout
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-rollout
+    gamma: 0.999
+
+Microrts-b2w10-grid2entity-a10-lnpost: &microrts-b2w10-grid2entity-a10-lnpost
+  <<: *microrts-b2w10-grid2entity-a10-base-rews
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-lnpost-policy
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+    pre_backbone_normalization: null
+    post_backbone_normalization: layer
+
+Microrts-b2w10-grid2entity-a10-lnprepost:
+  &microrts-b2w10-grid2entity-a10-lnprepost
+  <<: *microrts-b2w10-grid2entity-a10-lnpost
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-lnprepost-policy
+    <<: *microrts-b2w10-grid2entity-a10-lnpost-policy
+    pre_backbone_normalization: layer
+    post_backbone_normalization: layer
+
+Microrts-b2w10-grid2entity-a10-vog0: &microrts-b2w10-grid2entity-a10-vog0
+  <<: *microrts-b2w10-grid2entity-a10-base-rews
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-vog0-policy
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+    value_output_gain: 0
+
+Microrts-b2w10-grid2entity-a10-adam-opts:
+  &microrts-b2w10-grid2entity-a10-adam-opts
+  <<: *microrts-b2w10-grid2entity-a10-base-rews
+  algo_hyperparams: &microrts-b2w10-grid2entity-a10-adam-opts-algo
+    <<: *microrts-b2w10-grid2entity-a10-scale-actions-algo
+    optim_eps: !!float 1e-5
+    optim_amsgrad: true
+
+Microrts-b2w10-grid2entity-a10-adam-opts-vog0:
+  &microrts-b2w10-grid2entity-a10-adam-opts-vog0
+  <<: *microrts-b2w10-grid2entity-a10-adam-opts
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-adam-opts-vog0-policy
+    <<: *microrts-b2w10-grid2entity-a10-vog0-policy
+
+Microrts-b2w10-grid2entity-a10-multi-rews:
+  &microrts-b2w10-grid2entity-a10-multi-rews
+  <<: *microrts-b2w10-grid2entity-a10-adam-opts
+  algo_hyperparams: &microrts-b2w10-grid2entity-a10-multi-rews-algo
+    <<: *microrts-b2w10-grid2entity-a10-adam-opts-algo
+    multi_reward_weights: [0.99, 0.01]
+    vf_coef: [0.5, 0.1]
+  env_hyperparams: &microrts-b2w10-grid2entity-a10-multi-rews-env
+    <<: *microrts-b2w10-grid2entity-a10-base-rews-env
+    additional_win_loss_reward: true
+  eval_hyperparams: &microrts-b2w10-grid2entity-a10-multi-rews-eval
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval
+    env_overrides:
+      <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval-env-overrides
+      additional_win_loss_reward: false
+  hyperparam_transitions_kwargs:
+    &microrts-b2w10-grid2entity-a10-multi-rews-transitions
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-transitions
+    phases:
+      - learning_rate: !!float 1e-3
+        ent_coef: 0.05
+        multi_reward_weights: [1, 0]
+        vf_coef: [0.5, 0]
+      - learning_rate: 0
+        ent_coef: 0
+        multi_reward_weights: [0.5, 0.5]
+        vf_coef: [0.25, 0.25]
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-multi-rews-policy
+    <<: *microrts-bw10-p1-1m-ent100d-lr10d-shaped-rew-mgn2-grid2entity-a10-policy
+    additional_critic_activation_functions: [identity]
+  rollout_hyperparams: &microrts-b2w10-grid2entity-a10-multi-rews-rollout
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-rollout
+    gamma: [0.99, 0.999]
+
+Microrts-b2w10-grid2entity-a10-multi-rews-vog0:
+  &microrts-b2w10-grid2entity-a10-multi-rews-vog0
+  <<: *microrts-b2w10-grid2entity-a10-multi-rews
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-multi-rews-vog0-policy
+    <<: *microrts-b2w10-grid2entity-a10-multi-rews-policy
+    value_output_gain: 0
+
+Microrts-b2w10-grid2entity-a10-max-critic-neck:
+  &microrts-b2w10-grid2entity-a10-max-critic-neck
+  <<: *microrts-b2w10-grid2entity-a10-adam-opts-vog0
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-max-critic-neck-policy
+    <<: *microrts-b2w10-grid2entity-a10-adam-opts-vog0-policy
+    critic_neck_pooling: max
+
+Microrts-b2w10-grid2entity-a10-both-critic-neck:
+  &microrts-b2w10-grid2entity-a10-both-critic-neck
+  <<: *microrts-b2w10-grid2entity-a10-max-critic-neck
+  policy_hyperparams: &microrts-b2w10-grid2entity-a10-both-critic-neck-policy
+    <<: *microrts-b2w10-grid2entity-a10-max-critic-neck-policy
+    critic_neck_pooling: both
+
+Microrts-b2w10-grid2entity-a10-max-critic-neck-no-adam-opts:
+  &microrts-b2w10-grid2entity-a10-max-critic-neck-no-adam-opts
+  <<: *microrts-b2w10-grid2entity-a10-vog0
+  policy_hyperparams:
+    &microrts-b2w10-grid2entity-a10-max-critic-neck-no-adam-opts-policy
+    <<: *microrts-b2w10-grid2entity-a10-vog0-policy
+    critic_neck_pooling: max
+
+Microrts-b2w10-grid2entity-a10-multi-rews-no-adam-opts:
+  &microrts-b2w10-grid2entity-a10-multi-rews-no-adam-opts
+  <<: *microrts-b2w10-grid2entity-a10-multi-rews-vog0
+  algo_hyperparams: &microrts-b2w10-grid2entity-a10-multi-rews-no-adam-opts-algo
+    <<: *microrts-b2w10-grid2entity-a10-multi-rews-algo
+    optim_eps: !!float 1e-7
+    optim_amsgrad: false
+
+Microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck:
+  &microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck
+  <<: *microrts-b2w10-grid2entity-a10-multi-rews-no-adam-opts
+  policy_hyperparams:
+    &microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck-policy
+    <<: *microrts-b2w10-grid2entity-a10-multi-rews-vog0-policy
+    critic_neck_pooling: max
+
+Microrts-b2w10-1p-2m-grid2entity-a10: &microrts-b2w10-1p-2m-grid2entity-a10
+  <<: *microrts-b2w10-grid2entity-a10-max-critic-neck-no-adam-opts
+  n_timesteps: !!float 2e6
+
+Microrts-b2w10-1p-2m-grid2entity-a10-deterministic:
+  &microrts-b2w10-1p-2m-grid2entity-a10-deterministic
+  <<: *microrts-b2w10-1p-2m-grid2entity-a10
+  device_hyperparams: &microrts-b2w10-1p-2m-grid2entity-a10-deterministic-device
+    <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-device
+    use_deterministic_algorithms: true
+
+Microrts-b2w10-1p-2m-grid2entity-a10-deterministc-multi-rews:
+  &microrts-b2w10-1p-2m-grid2entity-a10-deterministc-multi-rews
+  <<: *microrts-b2w10-grid2entity-a10-multi-rews-max-critic-neck
+  device_hyperparams:
+    &microrts-b2w10-1p-2m-grid2entity-a10-deterministc-multi-rews-device
+    <<: *microrts-b2w10-1p-2m-grid2entity-a10-deterministic-device
+  n_timesteps: !!float 2e6
+
+Microrts-debug:
+  <<: *microrts-b2w10-1p-2m-grid2entity-a10
+  # eval_hyperparams:
+  #   <<: *microrts-bw10-1m-ent100d-lr10d-shaped-rew-mgn2-grid2seq-a10-eval
+  #   skip_evaluate_at_start: true

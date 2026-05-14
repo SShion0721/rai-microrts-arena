@@ -1,0 +1,178 @@
+CartPole-v1: &cartpole-defaults
+  n_timesteps: !!float 5e5
+  env_hyperparams:
+    n_envs: 8
+  rollout_hyperparams: &default-rollout
+    include_logp: false
+    n_steps: 5
+
+CartPole-v0:
+  <<: *cartpole-defaults
+
+MountainCar-v0:
+  n_timesteps: !!float 1e6
+  env_hyperparams:
+    n_envs: 16
+    normalize: true
+  rollout_hyperparams:
+    <<: *default-rollout
+
+MountainCarContinuous-v0:
+  n_timesteps: !!float 1e5
+  env_hyperparams:
+    n_envs: 4
+    normalize: true
+  # policy_hyperparams:
+  #   use_sde: true
+  #   log_std_init: 0.0
+  #   init_layers_orthogonal: false
+  rollout_hyperparams:
+    <<: *default-rollout
+    n_steps: 100
+    sde_sample_freq: 16
+
+Acrobot-v1:
+  n_timesteps: !!float 5e5
+  env_hyperparams:
+    normalize: true
+    n_envs: 16
+  rollout_hyperparams:
+    <<: *default-rollout
+
+# Tuned
+LunarLander-v2:
+  device: cpu
+  n_timesteps: !!float 1e6
+  env_hyperparams:
+    n_envs: 4
+    normalize: true
+  algo_hyperparams:
+    learning_rate: 0.0013814130817068916
+    ent_coef: !!float 3.388369146384422e-7
+    max_grad_norm: 3.33982095073364
+    normalize_advantage: true
+    vf_coef: 0.1667838310548184
+  rollout_hyperparams:
+    <<: *default-rollout
+    gamma: 0.9955517404308908
+    gae_lambda: 0.9875340918797773
+    n_steps: 2
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: 0.0013814130817068916
+      - learning_rate: 0
+
+BipedalWalker-v3:
+  n_timesteps: !!float 5e6
+  env_hyperparams:
+    n_envs: 16
+    normalize: true
+  policy_hyperparams:
+    use_sde: true
+    log_std_init: -2
+    init_layers_orthogonal: false
+  rollout_hyperparams:
+    <<: *default-rollout
+    n_steps: 8
+    gamma: 0.99
+    gae_lambda: 0.9
+  algo_hyperparams:
+    ent_coef: 0
+    max_grad_norm: 0.5
+    vf_coef: 0.4
+    learning_rate: !!float 9.6e-4
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: !!float 9.6e-4
+      - learning_rate: 0
+
+HalfCheetah-v4: &mujoco-defaults
+  n_timesteps: !!float 2e6
+  env_hyperparams: &mujoco-env-defaults
+    n_envs: 4
+    normalize: true
+  policy_hyperparams: &mujoco-policy-defaults
+    use_sde: true
+    log_std_init: -2
+    init_layers_orthogonal: false
+  rollout_hyperparams: &mujoco-rollout-defaults
+    n_steps: 8
+    gamma: 0.99
+    gae_lambda: 0.9
+  algo_hyperparams: &mujoco-algo-defaults
+    ent_coef: 0.0
+    max_grad_norm: 0.5
+    vf_coef: 0.4
+    learning_rate: 0.00096
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - learning_rate: 0.00096
+      - learning_rate: 0
+
+Ant-v4:
+  <<: *mujoco-defaults
+
+Walker2d-v4:
+  <<: *mujoco-defaults
+
+Hopper-v4:
+  <<: *mujoco-defaults
+
+# Tuned
+CarRacing-v2:
+  n_timesteps: !!float 4e6
+  env_hyperparams:
+    n_envs: 4
+    frame_stack: 2
+    normalize: true
+    normalize_kwargs:
+      norm_obs: false
+      norm_reward: true
+  policy_hyperparams:
+    use_sde: true
+    log_std_init: -4.839609092563
+    init_layers_orthogonal: true
+    activation_fn: tanh
+    share_features_extractor: false
+    cnn_flatten_dim: 256
+    hidden_sizes: [256]
+  algo_hyperparams:
+    learning_rate: 0.000018971962220405576
+    ent_coef: 0.0000015666550584860516
+    vf_coef: 0.12164696385898476
+    max_grad_norm: 2.2574480552177127
+    normalize_advantage: false
+    use_rms_prop: false
+  hyperparam_transitions_kwargs:
+    durations: [0, 1, 0]
+    phases:
+      - ent_coef: 0.0000015666550584860516
+      - ent_coef: 0
+  rollout_hyperparams:
+    <<: *default-rollout
+    n_steps: 64
+    sde_sample_freq: 16
+    gamma: 0.9942776405534832
+    gae_lambda: 0.9549244758833236
+
+_atari: &atari-defaults
+  n_timesteps: !!float 1e7
+  env_hyperparams: &atari-env-defaults
+    n_envs: 16
+    frame_stack: 4
+    no_reward_timeout_steps: 1000
+    no_reward_fire_steps: 500
+    vec_env_class: async
+  policy_hyperparams: &atari-policy-defaults
+    activation_fn: relu
+  algo_hyperparams:
+    ent_coef: 0.01
+    vf_coef: 0.25
+  rollout_hyperparams:
+    <<: *default-rollout
+  eval_hyperparams:
+    max_video_length: 18000
+    deterministic: false
