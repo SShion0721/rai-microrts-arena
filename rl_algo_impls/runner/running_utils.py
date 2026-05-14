@@ -14,7 +14,7 @@ import torch.backends.cudnn
 import yaml
 
 import wandb
-from rl_algo_impls.a2c.a2c import A2C
+# from rl_algo_impls.a2c.a2c import A2C  # Removed: not needed for microRTS
 from rl_algo_impls.acbc.acbc import ACBC
 from rl_algo_impls.ppo.appo import APPO
 from rl_algo_impls.ppo.dppo import DPPO
@@ -44,17 +44,16 @@ __all__ = [
 ]
 
 ALGOS: Dict[str, Type[Algorithm]] = {
-    # "dqn": DQN,
+    # "dqn": DQN,      # Removed
+    # "a2c": A2C,      # Removed: not needed for microRTS
     "ppo": PPO,
-    "a2c": A2C,
     "acbc": ACBC,
     "appo": APPO,
     "dppo": DPPO,
 }
 POLICIES: Dict[str, Type[Policy]] = {
-    # "dqn": DQNPolicy,
+    # "dqn": DQNPolicy,   # Removed
     "ppo": ActorCritic,
-    "a2c": ActorCritic,
     "acbc": ActorCritic,
     "appo": ActorCritic,
     "dppo": ActorCritic,
