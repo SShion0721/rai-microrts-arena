@@ -149,6 +149,9 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
 
         self.height, self.width, self.num_features = 0, 0, 0
         self.use_paper_obs = False
+        self._debug_verify = bool(getattr(self.interface, "DEBUG_VERIFY", False))
+        self._action_plane_dim = 0
+        self._padded_to_microrts_position: List[np.ndarray] = []
         self._update_spaces(is_init=True)
         self.num_envs = self.interface.num_envs
 
@@ -243,7 +246,7 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
                     y = pos // env_w
                     new_pos = (x + pad_w) + (y + pad_h) * self.width
                     self._last_action[env_idx, new_pos] = m_a[1:]
-            if getattr(self.interface, "DEBUG_VERIFY", False):
+            if self._debug_verify:
                 last_action_microrts_action = self._to_microrts_action(
                     self._last_action
                 )
@@ -279,21 +282,6 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
             self.interface.remove_listener(self)
         self.interface.close(**kwargs)
 
-    def _translate_actions(
-        self, actions: List[List[int]], env_idx: int
-    ) -> List[List[int]]:
-        map_h = self.interface.heights[env_idx]
-        map_w = self.interface.widths[env_idx]
-        if map_h == self.height and map_w == self.width:
-            return actions
-        pad_h = (self.height - map_h) // 2
-        pad_w = (self.width - map_w) // 2
-        for a in actions:
-            y = a[0] // self.width
-            x = a[0] % self.width
-            a[0] = (y - pad_h) * map_w + x - pad_w
-        return actions
-
     def _verify_actions(self, actions: List[List[int]], env_idx: int):
         matrix_mask = self._matrix_masks[env_idx]
         if matrix_mask is None:
@@ -301,13 +289,15 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
         env_w = self.interface.widths[env_idx]
 
         if len(actions) != np.sum(matrix_mask[:, :, 0]):
-            self.logger.error(
-                f"# Actions mismatch: Env {env_idx}, # Actions {len(actions)} (Should be {np.sum(matrix_mask[:, :, 0])})"
+            expected_actions = np.sum(matrix_mask[:, :, 0])
+            self.logger.debug(
+                f"# Actions mismatch: Env {env_idx}, # Actions {len(actions)} "
+                f"(Should be {expected_actions})"
             )
         for a in actions:
             m = matrix_mask[a[0] // env_w, a[0] % env_w]
             if m[0] == 0:
-                self.logger.error(f"No action allowed: Env {env_idx}, loc {a[0]}")
+                self.logger.debug(f"No action allowed: Env {env_idx}, loc {a[0]}")
             offset = 1
             for idx, sz in enumerate(self.action_plane_space.nvec):
                 valid = m[offset : offset + sz]
@@ -316,25 +306,30 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
                     continue
                 if not valid[a[idx + 1]]:
                     if idx == 0 or idx in ACTION_TYPE_TO_ACTION_INDEXES[a[1]]:
-                        self.logger.error(
-                            f"Invalid action in env {env_idx}, loc {a[0]}, action {a[1:]}, idx {idx+1}, valid {valid}"
+                        self.logger.debug(
+                            f"Invalid action in env {env_idx}, loc {a[0]}, "
+                            f"action {a[1:]}, idx {idx + 1}, valid {valid}"
                         )
 
     def _to_microrts_action(self, actions: np.ndarray) -> List[List[List[int]]]:
         actions = actions.reshape((self.num_envs, self.height * self.width, -1))
-        actions = np.concatenate((self.source_unit_idxs, actions), 2)
-        actions = actions[np.where(self.source_unit_mask == 1)]
-        action_counts_per_env = self.source_unit_mask.sum(1)
-
         actions_per_env = []
-        action_idx = 0
-        for idx, action_count in enumerate(action_counts_per_env):
-            actions_in_env = []
-            for _ in range(action_count):
-                actions_in_env.append(actions[action_idx].tolist())
-                action_idx += 1
-            actions_per_env.append(self._translate_actions(actions_in_env, idx))
-            self._verify_actions(actions_per_env[-1], idx)
+        for env_idx in range(self.num_envs):
+            source_unit_idxs = np.flatnonzero(self.source_unit_mask[env_idx])
+            if len(source_unit_idxs):
+                env_actions = np.empty(
+                    (len(source_unit_idxs), actions.shape[-1] + 1), dtype=actions.dtype
+                )
+                env_actions[:, 0] = self._padded_to_microrts_position[env_idx][
+                    source_unit_idxs
+                ]
+                env_actions[:, 1:] = actions[env_idx, source_unit_idxs]
+                actions_in_env = env_actions.tolist()
+            else:
+                actions_in_env = []
+            actions_per_env.append(actions_in_env)
+            if self._debug_verify:
+                self._verify_actions(actions_in_env, env_idx)
         return actions_per_env
 
     @property
@@ -429,37 +424,42 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
 
     def get_action_mask(self) -> np.ndarray:
         if self.ignore_mask:
-            return np.where(
-                np.expand_dims(self._action_mask.any(-1), -1),
-                np.ones_like(self._action_mask),
-                np.zeros_like(self._action_mask),
+            return np.broadcast_to(
+                self._action_mask.any(-1, keepdims=True),
+                self._action_mask.shape,
             )
         return self._action_mask
 
     def _update_action_mask(self, microrts_mask: List[ByteArray]) -> None:
-        masks = []
+        action_mask = np.zeros(
+            (
+                self.num_envs,
+                self.height,
+                self.width,
+                self._action_plane_dim + 1,
+            ),
+            dtype=np.bool_,
+        )
         for idx, m_bytes in enumerate(microrts_mask):
-            action_plane_dim = np.sum(self.action_plane_space.nvec)
-            m_array = m_bytes.reshape(-1, action_plane_dim + 2)
+            m_array = m_bytes.reshape(-1, self._action_plane_dim + 2)
             env_h = self.interface.heights[idx]
             env_w = self.interface.widths[idx]
-            m = np.zeros((env_h, env_w, action_plane_dim + 1), dtype=np.bool_)
-            m[m_array[:, 0], m_array[:, 1], 0] = not self.disallow_no_op
-            m[m_array[:, 0], m_array[:, 1], 1:] = m_array[:, 2:]
-            if env_h == self.height and env_w == self.width:
-                masks.append(m)
-                continue
-            new_m = np.zeros((self.height, self.width, m.shape[-1]), dtype=m.dtype)
             pad_h = (self.height - env_h) // 2
             pad_w = (self.width - env_w) // 2
-            new_m[pad_h : pad_h + env_h, pad_w : pad_w + env_w] = m
-            masks.append(new_m)
-        action_mask = np.array(masks)
-        self._matrix_masks = [
-            self.interface.debug_matrix_mask(env_idx)
-            for env_idx in range(self.num_envs)
-        ]
-        self._verify_action_mask(action_mask)
+            y = m_array[:, 0] + pad_h
+            x = m_array[:, 1] + pad_w
+            action_mask[idx, y, x, 0] = not self.disallow_no_op
+            action_mask[idx, y, x, 1:] = m_array[:, 2:]
+        self._matrix_masks = (
+            [
+                self.interface.debug_matrix_mask(env_idx)
+                for env_idx in range(self.num_envs)
+            ]
+            if self._debug_verify
+            else [None] * self.num_envs
+        )
+        if self._debug_verify:
+            self._verify_action_mask(action_mask)
         self.source_unit_mask = (
             action_mask[:, :, :, 0].reshape(self.num_envs, -1)
             if not self.disallow_no_op
@@ -524,6 +524,10 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
             self.num_features = self.planes.n_dim + self.resources_planes.n_dim
 
         if not is_init and get_dim() == old_dim:
+            self._padded_to_microrts_position = [
+                self._build_padded_to_microrts_position(env_idx)
+                for env_idx in range(self.interface.num_envs)
+            ]
             return None
 
         observation_space = gymnasium.spaces.Box(
@@ -543,13 +547,11 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
         )
 
         self.action_plane_space = gymnasium.spaces.MultiDiscrete(action_space_dims)
-
-        self.source_unit_idxs = np.tile(
-            np.arange(self.height * self.width), (self.num_envs, 1)
-        )
-        self.source_unit_idxs = self.source_unit_idxs.reshape(
-            (self.source_unit_idxs.shape + (1,))
-        )
+        self._action_plane_dim = int(np.sum(self.action_plane_space.nvec))
+        self._padded_to_microrts_position = [
+            self._build_padded_to_microrts_position(env_idx)
+            for env_idx in range(self.interface.num_envs)
+        ]
 
         self.single_observation_space = observation_space
         self.observation_space = batch_space(
@@ -565,3 +567,15 @@ class MicroRTSSpaceTransform(VectorEnv, MicroRTSInterfaceListener):
     ) -> None:
         self._set_spaces(False, sz=sz, use_paper_obs=use_paper_obs)
         self.interface.set_expected_step_ms(expected_step_ms)
+
+    def _build_padded_to_microrts_position(self, env_idx: int) -> np.ndarray:
+        env_h = self.interface.heights[env_idx]
+        env_w = self.interface.widths[env_idx]
+        padded_positions = np.arange(self.height * self.width, dtype=np.int32)
+        if env_h == self.height and env_w == self.width:
+            return padded_positions
+        pad_h = (self.height - env_h) // 2
+        pad_w = (self.width - env_w) // 2
+        y = padded_positions // self.width
+        x = padded_positions % self.width
+        return (y - pad_h) * env_w + x - pad_w

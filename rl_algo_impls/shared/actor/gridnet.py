@@ -47,6 +47,8 @@ class GridnetDistribution(Distribution):
     ) -> None:
         self.map_size = map_size
         self.action_vec = action_vec
+        self.action_dim = int(action_vec.sum())
+        self.action_vec_list = action_vec.tolist()
 
         masks_per_position = (
             masks["per_position"] if isinstance(masks, dict) else masks
@@ -55,13 +57,13 @@ class GridnetDistribution(Distribution):
             -1, masks_per_position.shape[-1]
         )  # Bool[B*H*W, A]
         split_masks_per_position = torch.split(
-            masks_per_position, action_vec.tolist(), dim=1
+            masks_per_position, self.action_vec_list, dim=1
         )  # Tuple[Bool[B*H*W, A_i], ...]
 
         grid_logits = logits.reshape(-1, logits.shape[-1])
-        grid_logits_per_position = grid_logits[:, : action_vec.sum()]
+        grid_logits_per_position = grid_logits[:, : self.action_dim]
         split_logits_per_position = torch.split(
-            grid_logits_per_position, action_vec.tolist(), dim=1
+            grid_logits_per_position, self.action_vec_list, dim=1
         )
         self.categoricals_per_position = [
             MaskedCategorical(logits=lg, validate_args=validate_args, mask=m)
@@ -83,7 +85,7 @@ class GridnetDistribution(Distribution):
                 self.pick_vec,
                 dim=1,
             )
-            logits_pick_position = logits[:, :, :, action_vec.sum() :]
+            logits_pick_position = logits[:, :, :, self.action_dim :]
             logits_pick_position = logits_pick_position.reshape(
                 logits_pick_position.shape[0], -1, logits_pick_position.shape[-1]
             ).transpose(-1, -2)

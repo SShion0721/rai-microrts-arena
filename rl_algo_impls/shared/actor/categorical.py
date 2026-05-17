@@ -24,7 +24,7 @@ class MaskedCategorical(Categorical):
         if mask is not None:
             assert logits is not None, "mask requires logits and not probs"
             neg_inf = neg_inf if neg_inf is not None else torch.finfo(logits.dtype).min
-            logits = torch.where(mask, logits, neg_inf)
+            logits = logits.masked_fill(~mask, neg_inf)
             if self.verify:
                 self.rows_with_valid_actions = mask.any(dim=1)
                 self.non_empty_action_mask = mask[self.rows_with_valid_actions]
@@ -40,7 +40,7 @@ class MaskedCategorical(Categorical):
                 value[self.rows_with_valid_actions],
             ]
             if not (len(valid_actions) == 0 or valid_actions.all()):
-                logging.error(f"INVALID ACTIONS SELECTED")
+                logging.debug("INVALID ACTIONS SELECTED")
         return logp
 
     def entropy(self) -> torch.Tensor:
@@ -50,14 +50,8 @@ class MaskedCategorical(Categorical):
         logits = self.logits
         assert isinstance(logits, torch.Tensor)
         logits = torch.clamp(logits, min=torch.finfo(logits.dtype).min)
-        probs = self.probs
-        assert isinstance(probs, torch.Tensor)
         p_log_p = logits * self.probs
-        masked = torch.where(
-            self.mask,
-            p_log_p,
-            torch.tensor(0, dtype=p_log_p.dtype, device=p_log_p.device),
-        )
+        masked = p_log_p.masked_fill(~self.mask, 0)
         return -masked.sum(-1)
 
 
