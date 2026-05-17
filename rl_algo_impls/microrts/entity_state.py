@@ -122,44 +122,49 @@ def _build_radius_edges(
     if edge_radius is None:
         return None, None
 
-    edge_indices = []
-    edge_attrs = []
-    max_entities = positions.shape[1]
-    for batch_idx, count_tensor in enumerate(n_entities):
-        count = int(count_tensor.item())
-        for src in range(count):
-            for dst in range(count):
-                if src == dst:
-                    continue
-                delta = positions[batch_idx, dst] - positions[batch_idx, src]
-                distance = torch.linalg.vector_norm(delta, ord=2)
-                if distance <= edge_radius:
-                    edge_indices.append(
-                        (
-                            batch_idx * max_entities + src,
-                            batch_idx * max_entities + dst,
-                        )
-                    )
-                    edge_attrs.append(
-                        torch.cat(
-                            (
-                                torch.tensor(
-                                    [float(batch_idx)],
-                                    dtype=positions.dtype,
-                                    device=positions.device,
-                                ),
-                                delta,
-                                distance.unsqueeze(0),
-                            )
-                        )
-                    )
-
-    if not edge_indices:
+    batch_size, max_entities, _ = positions.shape
+    if batch_size == 0 or max_entities == 0:
         return (
             torch.empty(2, 0, dtype=torch.long, device=positions.device),
             torch.empty(0, 4, dtype=positions.dtype, device=positions.device),
         )
+
+    entity_idx = torch.arange(max_entities, device=positions.device)
+    valid_entities = entity_idx.unsqueeze(0) < n_entities.unsqueeze(1)
+    src_valid = valid_entities.unsqueeze(2)
+    dst_valid = valid_entities.unsqueeze(1)
+    not_self = ~torch.eye(max_entities, dtype=torch.bool, device=positions.device)
+
+    delta = positions.unsqueeze(1) - positions.unsqueeze(2)
+    distances = torch.linalg.vector_norm(delta, ord=2, dim=-1)
+    edge_mask = (
+        src_valid
+        & dst_valid
+        & not_self.unsqueeze(0)
+        & (distances <= edge_radius)
+    )
+
+    if not edge_mask.any():
+        return (
+            torch.empty(2, 0, dtype=torch.long, device=positions.device),
+            torch.empty(0, 4, dtype=positions.dtype, device=positions.device),
+        )
+
+    batch_idx, src_idx, dst_idx = torch.nonzero(edge_mask, as_tuple=True)
+    max_entities = positions.shape[1]
+    edge_delta = delta[batch_idx, src_idx, dst_idx]
+    edge_distance = distances[batch_idx, src_idx, dst_idx].unsqueeze(1)
+    edge_attr = torch.cat(
+        (
+            batch_idx.to(dtype=positions.dtype).unsqueeze(1),
+            edge_delta,
+            edge_distance,
+        ),
+        dim=1,
+    )
     return (
-        torch.tensor(edge_indices, dtype=torch.long, device=positions.device).T,
-        torch.stack(edge_attrs),
+        torch.stack(
+            (batch_idx * max_entities + src_idx, batch_idx * max_entities + dst_idx)
+        ),
+        edge_attr,
     )
