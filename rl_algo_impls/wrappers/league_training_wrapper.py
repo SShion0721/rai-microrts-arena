@@ -47,10 +47,50 @@ class LeaguePolicyStats:
 
 
 @dataclass
+class MatchupStats:
+    wins: int = 0
+    draws: int = 0
+    losses: int = 0
+
+    @property
+    def matches(self) -> int:
+        return self.wins + self.draws + self.losses
+
+    @property
+    def score_rate(self) -> float:
+        if self.matches == 0:
+            return 0.5
+        return (self.wins + 0.5 * self.draws) / self.matches
+
+    def update(self, result: float) -> None:
+        if result > 0.75:
+            self.wins += 1
+        elif result > 0.25:
+            self.draws += 1
+        else:
+            self.losses += 1
+
+
+@dataclass
+class PBTConfig:
+    enabled: bool = False
+    exploit_interval_steps: int = 1_000_000
+    perturb_factor: float = 1.2
+    mutable_hyperparams: List[str] = field(
+        default_factory=lambda: [
+            "ent_coef",
+            "clip_range",
+            "learning_rate",
+            "teacher_kl_loss_coef",
+        ]
+    )
+
+
+@dataclass
 class LeagueConfig:
     """Configuration for league training opponent selection."""
 
-    # Prioritization mode: "hardest" | "closest" | "random"
+    # Prioritization mode: "hardest" | "closest" | "pfsp" | "random"
     priority_mode: str = "closest"
 
     # Target win rate range for "closest" mode (policies with win rate in this range are preferred)
@@ -68,6 +108,19 @@ class LeagueConfig:
 
     # Whether to track results automatically via env info
     auto_track_results: bool = True
+
+    # PFSP weighting exponent. Larger values focus more on policies the learner loses to.
+    pfsp_alpha: float = 1.0
+
+    # Optional role labels for AlphaStar-style population analysis.
+    role_by_policy_idx: Dict[int, str] = field(default_factory=dict)
+
+    # PBT scheduling metadata. The wrapper records this but leaves mutation to callbacks.
+    pbt: PBTConfig = field(default_factory=PBTConfig)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.pbt, dict):
+            self.pbt = PBTConfig(**self.pbt)
 
 
 class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
@@ -110,6 +163,7 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
         )
         self.league_config = league_config or LeagueConfig()
         self._league_stats: Dict[int, LeaguePolicyStats] = {}
+        self._matchup_stats: Dict[Tuple[int, int], MatchupStats] = {}
         self._recent_results: Deque[Tuple[int, int, float]] = deque(maxlen=1000)
 
         logging.info(
@@ -173,8 +227,30 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
                     key=lambda x: abs(x[1].win_rate - 0.5),
                 )[0]
                 return self.policies[best_idx]
+        elif mode == "pfsp":
+            return self._pfsp_select_opponent(policies_with_idx)
         # Default: random
         return None
+
+    def _pfsp_select_opponent(self, policies_with_idx):
+        learner_idx = -1
+        weights = []
+        candidate_indices = []
+        for policy_idx, _ in policies_with_idx:
+            matchup = self._matchup_stats.get((learner_idx, policy_idx))
+            learner_score = matchup.score_rate if matchup else 0.5
+            # Prioritize policies the learner has not mastered, while keeping
+            # cold-start opponents in rotation.
+            weight = max(1.0 - learner_score, 1e-3) ** self.league_config.pfsp_alpha
+            weights.append(weight)
+            candidate_indices.append(policy_idx)
+
+        weights_np = np.asarray(weights, dtype=np.float64)
+        if weights_np.sum() <= 0:
+            return None
+        weights_np /= weights_np.sum()
+        selected_idx = int(np.random.choice(candidate_indices, p=weights_np))
+        return self.policies[selected_idx]
 
     def _get_elo(self, policy_idx: int) -> float:
         """Get ELO rating for a policy, returning default if not tracked."""
@@ -254,6 +330,12 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
         opponent.update_elo(
             1500.0, result, k=self.league_config.elo_k
         )
+        self._matchup_stats.setdefault(
+            (policy_idx, opponent_idx), MatchupStats()
+        ).update(result)
+        self._matchup_stats.setdefault(
+            (opponent_idx, policy_idx), MatchupStats()
+        ).update(1.0 - result)
         self._recent_results.append((policy_idx, opponent_idx, result))
 
     def step(self, actions: np.ndarray):
@@ -276,3 +358,33 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
         return sorted(
             self._league_stats.items(), key=lambda x: x[1].rating, reverse=True
         )
+
+    @property
+    def win_rate_table(self) -> Dict[Tuple[int, int], float]:
+        return {
+            matchup: stats.score_rate
+            for matchup, stats in self._matchup_stats.items()
+        }
+
+    def league_snapshot(self) -> Dict[str, Any]:
+        return {
+            "standings": [
+                {
+                    "policy_idx": idx,
+                    "rating": stats.rating,
+                    "matches": stats.matches,
+                    "win_rate": stats.win_rate,
+                    "role": self.league_config.role_by_policy_idx.get(idx, "league"),
+                }
+                for idx, stats in self.league_standings
+            ],
+            "win_rate_table": {
+                f"{learner}:{opponent}": rate
+                for (learner, opponent), rate in self.win_rate_table.items()
+            },
+            "pbt": {
+                "enabled": self.league_config.pbt.enabled,
+                "mutable_hyperparams": self.league_config.pbt.mutable_hyperparams,
+                "exploit_interval_steps": self.league_config.pbt.exploit_interval_steps,
+            },
+        }

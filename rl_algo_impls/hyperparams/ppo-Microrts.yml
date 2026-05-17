@@ -445,6 +445,18 @@ Microrts-squnet-map16-selfplay: &microrts-squnet-map16-selfplay
   hyperparam_transitions_kwargs:
     <<: *microrts-squnet-map12-selfplay-phases
 
+Microrts-hybrid-entity-grid-map16-selfplay:
+  <<: *microrts-squnet-map16-selfplay
+  policy_hyperparams:
+    <<: *microrts-squnet-map16-policy-defaults
+    actor_head_style: hybrid_entity_grid
+    normalization: layer
+    encoder_embed_dim: 128
+    encoder_attention_heads: 4
+    encoder_feed_forward_dim: 256
+    encoder_layers: 2
+    actor_head_kernel_size: 3
+
 _Microrts-squnet-deep8: &microrts-squnet-deep8
   <<: *microrts-squnet-map16
   policy_hyperparams: &microrts-squnet-deep8-policy-defaults

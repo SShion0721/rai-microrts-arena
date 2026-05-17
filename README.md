@@ -20,6 +20,10 @@ Named after the **RAISocketAI** agent.
 | 8 | Self-play fix | Team assignment in checkpoint_policy | `wrappers/self_play_wrapper.py` |
 | 9 | ACBC AMP | Mixed precision for BC pretraining | `acbc/acbc.py` |
 | 10 | Determinism fix | Default `False` for torch.compile compat | `runner/running_utils.py` |
+| 11 | Hybrid entity-grid net | SquNet grid actor + entity Transformer context | `shared/policy/actor_critic_network/hybrid_entity_grid.py` |
+| 12 | Offline replay schema | npz trajectory format for BC/pretraining/DT | `pretrain/replay.py` |
+| 13 | Option surface | Programmatic macro-action API with legal fallback | `microrts/options/` |
+| 14 | PFSP/PBT league metadata | Matchup table, PFSP sampling, PBT config | `wrappers/league_training_wrapper.py` |
 
 ## Algorithms
 
@@ -29,7 +33,7 @@ Named after the **RAISocketAI** agent.
 ## Network architectures
 
 Squnet (Squeeze-UNet with SE attention), DoubleCone, SACUS (split Actor-Critic),
-Grid2Seq/Grid2Entity Transformers, GridNet, UNet.
+Grid2Seq/Grid2Entity Transformers, Hybrid Entity-Grid, GridNet, UNet.
 
 ## Quick start
 
@@ -41,6 +45,12 @@ pip install -e ".[microrts]"
 
 # Basic training
 python train.py --algo ppo --env Microrts-squnet-map16-selfplay --seed 1
+
+# First hybrid entity-grid experiment
+python train.py --algo ppo --env Microrts-hybrid-entity-grid-map16-selfplay --seed 1
+
+# Print the fixed microRTS evaluation matrix
+python scripts/microrts_eval_matrix.py
 ```
 
 ## Example configs

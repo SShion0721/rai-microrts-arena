@@ -8,4 +8,7 @@ from rl_algo_impls.shared.policy.actor_critic_network.network import (
 from rl_algo_impls.shared.policy.actor_critic_network.separate_actor_critic import (
     SeparateActorCriticNetwork,
 )
+from rl_algo_impls.shared.policy.actor_critic_network.hybrid_entity_grid import (
+    HybridEntityGridActorCriticNetwork,
+)
 from rl_algo_impls.shared.policy.actor_critic_network.unet import UNetActorCriticNetwork

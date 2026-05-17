@@ -36,6 +36,9 @@ from rl_algo_impls.shared.policy.actor_critic_network.grid2entity_transformer im
 from rl_algo_impls.shared.policy.actor_critic_network.grid2seq_transformer import (
     Grid2SeqTransformerNetwork,
 )
+from rl_algo_impls.shared.policy.actor_critic_network.hybrid_entity_grid import (
+    HybridEntityGridActorCriticNetwork,
+)
 from rl_algo_impls.shared.policy.actor_critic_network.sacus import (
     SplitActorCriticUShapedNetwork,
 )
@@ -261,6 +264,34 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
                     shared_critic_head if shared_critic_head is not None else False
                 ),
                 critic_avg_max_pool=critic_avg_max_pool,
+            )
+        elif actor_head_style == "hybrid_entity_grid":
+            assert action_plane_space is not None
+            assert normalization is not None
+            self.network = HybridEntityGridActorCriticNetwork(
+                single_observation_space,
+                single_action_space,
+                action_plane_space,
+                init_layers_orthogonal=init_layers_orthogonal,
+                cnn_layers_init_orthogonal=cnn_layers_init_orthogonal,
+                channels_per_level=channels_per_level,
+                strides_per_level=strides_per_level,
+                deconv_strides_per_level=deconv_strides_per_level,
+                encoder_residual_blocks_per_level=encoder_residual_blocks_per_level,
+                decoder_residual_blocks_per_level=decoder_residual_blocks_per_level,
+                increment_kernel_size_on_down_conv=increment_kernel_size_on_down_conv,
+                encoder_embed_dim=encoder_embed_dim,
+                encoder_attention_heads=encoder_attention_heads,
+                encoder_feed_forward_dim=encoder_feed_forward_dim,
+                encoder_layers=encoder_layers,
+                hidden_critic_dims=hidden_critic_dims,
+                num_additional_critics=num_additional_critics,
+                additional_critic_activation_functions=additional_critic_activation_functions,
+                output_activation_fn=output_activation_fn,
+                subaction_mask=subaction_mask,
+                normalization=normalization,
+                actor_head_kernel_size=actor_head_kernel_size,
+                value_output_gain=value_output_gain,
             )
         elif actor_head_style == "grid2seq_transformer":
             assert action_plane_space is not None
