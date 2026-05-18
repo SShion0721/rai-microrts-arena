@@ -152,10 +152,11 @@ class A2CRollout(Rollout):
         batch = self.batch(
             torch.device("cpu") if self.full_batch_off_accelerator else device
         )
+        index_device = batch.obs.device
         b_idxs = (
-            torch.randperm(self.total_steps)
+            torch.randperm(self.total_steps, device=index_device)
             if shuffle
-            else torch.arange(self.total_steps)
+            else torch.arange(self.total_steps, device=index_device)
         )
         for i in range(0, self.total_steps, batch_size):
             mb_idxs = b_idxs[i : i + batch_size]

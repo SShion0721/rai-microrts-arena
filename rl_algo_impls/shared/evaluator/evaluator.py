@@ -53,7 +53,9 @@ class EvaluateAccumulator(EpisodeAccumulator):
 
     def on_done(self, ep_idx: int, episode: Episode, info: Dict) -> None:
         if self.additional_keys_to_log:
-            episode.info = {k: info[k] for k in self.additional_keys_to_log}
+            episode.info = {
+                k: info[k] for k in self.additional_keys_to_log if k in info
+            }
         if (
             self.should_record_done(ep_idx)
             and len(self.completed_episodes_by_env_idx[ep_idx])
@@ -222,7 +224,7 @@ class Evaluator:
         end_time = perf_counter()
         self.tb_writer.add_scalar(
             "eval/steps_per_second",
-            eval_stat.length.sum() / (end_time - start_time),
+            eval_stat.length.sum() / max(end_time - start_time, 1e-9),
         )
         policy.train(True)
         logging.info(f"Eval Timesteps: {self.timesteps_elapsed} | {eval_stat}")

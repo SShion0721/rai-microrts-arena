@@ -1,4 +1,3 @@
-import gc
 import logging
 from time import perf_counter
 from typing import List, Optional, TypeVar, Union
@@ -388,9 +387,19 @@ class DPPO(Algorithm):
             train_stats.write_to_tensorboard(self.tb_writer)
 
             end_time = perf_counter()
+            steps_per_second = rollout_steps_elapsed / max(end_time - start_time, 1e-9)
             self.tb_writer.add_scalar(
                 "train/steps_per_second",
-                rollout_steps_elapsed / (end_time - start_time),
+                steps_per_second,
+            )
+            logging.info(
+                "Update: steps=%s/%s | rollout_steps=%s | %.1f steps/s | epochs=%.2f | %s",
+                timesteps_elapsed,
+                train_timesteps,
+                rollout_steps_elapsed,
+                steps_per_second,
+                n_epochs,
+                train_stats,
             )
 
             if callbacks:
@@ -405,7 +414,6 @@ class DPPO(Algorithm):
                     )
                     break
             rollouts = next_rollouts
-            gc.collect()
 
         self.policy = accelerator.unwrap_model(self.policy)
         return self

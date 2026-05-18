@@ -43,7 +43,10 @@ class TrainStats:
         s = []
         for name, value in stats.items():
             if isinstance(value, np.ndarray):
-                s.append(f"{name}: " + ",".join(round(v, 2) for v in value.flatten()))
+                s.append(
+                    f"{name}: "
+                    + ",".join(str(round(float(v), 2)) for v in value.flatten())
+                )
             else:
-                s.append(f"{name}: {round(value, 2)}")
+                s.append(f"{name}: {round(float(value), 2)}")
         return " | ".join(s)

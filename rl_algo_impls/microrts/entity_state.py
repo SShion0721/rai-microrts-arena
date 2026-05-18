@@ -83,18 +83,16 @@ def extract_entity_state_batch(
     x_norm = _normalize_position(x_pos.float(), width)
     all_positions = torch.stack((y_norm, x_norm), dim=-1)
 
-    for batch_idx in range(batch_size):
-        selected = keep_mask[batch_idx]
-        count = int(n_entities[batch_idx].item())
-        if count == 0:
-            continue
-        selected_nodes = flattened[batch_idx, selected]
-        selected_positions = all_positions[selected]
+    if max_entities:
+        batch_indices, flat_indices = torch.nonzero(keep_mask, as_tuple=True)
+        entity_indices = keep_mask.cumsum(dim=1)[batch_indices, flat_indices] - 1
+        selected_nodes = flattened[batch_indices, flat_indices]
+        selected_positions = all_positions[flat_indices]
         if add_position_features:
             selected_nodes = torch.cat((selected_nodes, selected_positions), dim=-1)
-        nodes[batch_idx, :count] = selected_nodes
-        positions[batch_idx, :count] = selected_positions
-        key_padding_mask[batch_idx, :count] = False
+        nodes[batch_indices, entity_indices] = selected_nodes
+        positions[batch_indices, entity_indices] = selected_positions
+        key_padding_mask[batch_indices, entity_indices] = False
 
     edge_index, edge_attr = _build_radius_edges(positions, n_entities, edge_radius)
     return EntityStateBatch(

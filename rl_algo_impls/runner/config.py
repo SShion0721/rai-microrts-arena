@@ -82,7 +82,9 @@ class Config:
     hyperparams: Hyperparams
     root_dir: str
     gpu_ids: Optional[List[int]] = None
-    run_id: str = datetime.now().isoformat()
+    run_id: str = dataclasses.field(
+        default_factory=lambda: datetime.now().isoformat()
+    )
 
     def __post_init__(self) -> None:
         self._worker_hyperparams = WorkerHyperparams(

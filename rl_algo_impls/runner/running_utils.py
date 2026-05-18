@@ -147,6 +147,9 @@ def set_device_optimizations(
     device: torch.device,
     set_float32_matmul_precision: Optional[str] = None,
     use_deterministic_algorithms: bool = False,
+    cudnn_benchmark: Optional[bool] = None,
+    cudnn_allow_tf32: Optional[bool] = None,
+    cuda_matmul_allow_tf32: Optional[bool] = None,
     **kwargs,
 ) -> None:
     torch.use_deterministic_algorithms(use_deterministic_algorithms)
@@ -156,6 +159,17 @@ def set_device_optimizations(
                 f"Setting torch.set_float32_matmul_precision to {set_float32_matmul_precision}"
             )
             torch.set_float32_matmul_precision(set_float32_matmul_precision)
+        if cudnn_benchmark is not None:
+            logging.info(f"Setting torch.backends.cudnn.benchmark to {cudnn_benchmark}")
+            torch.backends.cudnn.benchmark = cudnn_benchmark
+        if cudnn_allow_tf32 is not None:
+            logging.info(f"Setting torch.backends.cudnn.allow_tf32 to {cudnn_allow_tf32}")
+            torch.backends.cudnn.allow_tf32 = cudnn_allow_tf32
+        if cuda_matmul_allow_tf32 is not None:
+            logging.info(
+                f"Setting torch.backends.cuda.matmul.allow_tf32 to {cuda_matmul_allow_tf32}"
+            )
+            torch.backends.cuda.matmul.allow_tf32 = cuda_matmul_allow_tf32
 
 
 def compile_policy(policy: "Policy", mode: str = "reduce-overhead") -> "Policy":

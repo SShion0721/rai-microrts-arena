@@ -77,7 +77,9 @@ class EpisodeStatsWriter(VectorWrapper):
             ):
                 if final_info and "episode" in final_info:
                     additional_info = {
-                        k: final_info[k] for k in self.additional_keys_to_log
+                        k: final_info[k]
+                        for k in self.additional_keys_to_log
+                        if k in final_info
                     }
                     episode = Episode(
                         final_info["episode"]["r"].item(),
@@ -91,10 +93,11 @@ class EpisodeStatsWriter(VectorWrapper):
                 get_infos(infos, "episode", self.num_envs, {})
             ):
                 if ep_info:
-                    additional_info = {
-                        k: get_info(infos, k, env_idx)
-                        for k in self.additional_keys_to_log
-                    }
+                    additional_info = {}
+                    for k in self.additional_keys_to_log:
+                        value = get_info(infos, k, env_idx)
+                        if value is not None:
+                            additional_info[k] = value
                     episode = Episode(ep_info["r"], ep_info["l"], info=additional_info)
                     step_episodes.append(episode)
                     self.episodes.append(episode)

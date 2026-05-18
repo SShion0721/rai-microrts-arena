@@ -14,11 +14,17 @@ from rl_algo_impls.shared.summary_wrapper.abstract_summary_wrapper import (
 )
 
 
+def wandb_enabled(args: TrainArgs) -> bool:
+    return bool(args.wandb_project_name) and os.environ.get(
+        "WANDB_MODE", ""
+    ).lower() != "disabled"
+
+
 class InProcessSummaryWrapper(AbstractSummaryWrapper):
     def __init__(self, config: Config, args: TrainArgs) -> None:
         super().__init__()
         self.config = config
-        self.wandb_enabled = bool(args.wandb_project_name)
+        self.wandb_enabled = wandb_enabled(args)
         if self.wandb_enabled:
             wandb.tensorboard.patch(
                 root_logdir=config.tensorboard_summary_path, pytorch=True

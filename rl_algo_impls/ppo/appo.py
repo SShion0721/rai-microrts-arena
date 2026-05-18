@@ -1,4 +1,3 @@
-import gc
 import logging
 from time import perf_counter
 from typing import List, Optional, TypeVar, Union
@@ -14,7 +13,7 @@ from rl_algo_impls.ppo.appo_train_stats import APPOTrainStats
 from rl_algo_impls.ppo.ppo import TrainStepStats
 from rl_algo_impls.rollout.rollout_dataloader import RolloutDataLoader
 from rl_algo_impls.shared.algorithm import Algorithm
-from rl_algo_impls.shared.autocast import maybe_autocast
+from rl_algo_impls.shared.autocast import safe_amp_forward
 from rl_algo_impls.shared.callbacks.callback import Callback
 from rl_algo_impls.shared.data_store.data_store_data import LearnerDataStoreViewUpdate
 from rl_algo_impls.shared.data_store.data_store_view import LearnerDataStoreView
@@ -172,7 +171,9 @@ class APPO(Algorithm):
             shuffle_minibatches = True
             if self.gradient_accumulation:
                 if self.gradient_accumulation is True:
-                    minibatches_per_step = r.num_minibatches(self.batch_size)
+                    minibatches_per_step = rollouts[0].num_minibatches(
+                        self.batch_size
+                    )
                     shuffle_minibatches = False
                 else:
                     minibatches_per_step = self.gradient_accumulation
@@ -234,118 +235,106 @@ class APPO(Algorithm):
                                 mb_adv = mb_adv @ multi_reward_weights
 
                         additional_losses = {}
-                        with maybe_autocast(
+                        new_logprobs, entropy, new_values = safe_amp_forward(
                             self.autocast_loss,
                             self.device,
-                            amp_dtype=self.autocast_amp_dtype,
-                        ):
-                            new_logprobs, entropy, new_values = self.policy(
-                                mb_obs, mb_actions, action_masks=mb_action_masks
+                            self.autocast_amp_dtype,
+                            self.policy,
+                            mb_obs,
+                            mb_actions,
+                            mb_action_masks,
+                        )
+
+                        logratio = new_logprobs - mb_logprobs
+                        ratio = torch.exp(logratio)
+                        clipped_ratio = torch.clamp(
+                            ratio, min=1 - pi_clip, max=1 + pi_clip
+                        )
+                        pi_loss = -torch.min(
+                            ratio * mb_adv, clipped_ratio * mb_adv
+                        ).mean()
+
+                        v_loss_unclipped = self.vf_loss_fn(
+                            new_values, mb_returns, reduction="none"
+                        )
+                        if v_clip is not None:
+                            v_loss_clipped = self.vf_loss_fn(
+                                mb_values
+                                + torch.clamp(new_values - mb_values, -v_clip, v_clip),
+                                mb_returns,
+                                reduction="none",
+                            )
+                            v_loss = torch.max(v_loss_unclipped, v_loss_clipped)
+                        else:
+                            v_loss = v_loss_unclipped
+                        if vf_weights is not None:
+                            v_loss = v_loss @ vf_weights
+                        v_loss = v_loss.mean(0)
+
+                        if self.ppo2_vf_coef_halving:
+                            v_loss *= 0.5
+
+                        entropy_loss = -entropy.mean()
+                        with torch.no_grad():
+                            approx_kl = (
+                                ((ratio - 1) - logratio).mean().cpu().numpy().item()
+                            )
+                        if self.kl_cutoff is not None and approx_kl > self.kl_cutoff:
+                            pi_coef = 0
+
+                        loss = (
+                            pi_coef * pi_loss
+                            + self.ent_coef * entropy_loss
+                            + (vf_coef * v_loss).sum()
+                        )
+
+                        if self.teacher_kl_loss_coef:
+                            assert self.teacher_kl_loss_fn
+                            assert mb_teacher_logprobs is not None, "No teacher logprobs"
+                            teacher_kl_loss = self.teacher_kl_loss_fn(
+                                new_logprobs,
+                                mb_teacher_logprobs,
+                                ratio if self.teacher_loss_importance_sampling else None,
+                            )
+                            additional_losses["teacher_kl_loss"] = teacher_kl_loss.item()
+                            loss += self.teacher_kl_loss_coef * teacher_kl_loss
+
+                        loss /= minibatches_per_step
+                        loss.backward()
+                        if mb_idx % minibatches_per_step == 0:
+                            grad_norms.append(self.optimizer_step())
+
+                        with torch.no_grad():
+                            clipped_frac = (
+                                ((ratio - 1).abs() > pi_clip)
+                                .float()
+                                .mean()
+                                .cpu()
+                                .numpy()
+                                .item()
+                            )
+                            val_clipped_frac = (
+                                ((new_values - mb_values).abs() > v_clip)
+                                .float()
+                                .mean(0)
+                                .cpu()
+                                .numpy()
+                                if v_clip is not None
+                                else np.zeros(v_loss.shape)
                             )
 
-                            logratio = new_logprobs - mb_logprobs
-                            ratio = torch.exp(logratio)
-                            clipped_ratio = torch.clamp(
-                                ratio, min=1 - pi_clip, max=1 + pi_clip
+                        step_stats.append(
+                            TrainStepStats(
+                                loss.item(),
+                                pi_loss.item(),
+                                v_loss.detach().float().cpu().numpy(),
+                                entropy_loss.item(),
+                                approx_kl,
+                                clipped_frac,
+                                val_clipped_frac,
+                                additional_losses,
                             )
-                            pi_loss = -torch.min(
-                                ratio * mb_adv, clipped_ratio * mb_adv
-                            ).mean()
-
-                            v_loss_unclipped = self.vf_loss_fn(
-                                new_values, mb_returns, reduction="none"
-                            )
-                            if v_clip is not None:
-                                v_loss_clipped = self.vf_loss_fn(
-                                    mb_values
-                                    + torch.clamp(
-                                        new_values - mb_values, -v_clip, v_clip
-                                    ),
-                                    mb_returns,
-                                    reduction="none",
-                                )
-                                v_loss = torch.max(v_loss_unclipped, v_loss_clipped)
-                            else:
-                                v_loss = v_loss_unclipped
-                            if vf_weights is not None:
-                                v_loss = v_loss @ vf_weights
-                            v_loss = v_loss.mean(0)
-
-                            if self.ppo2_vf_coef_halving:
-                                v_loss *= 0.5
-
-                            entropy_loss = -entropy.mean()
-                            with torch.no_grad():
-                                approx_kl = (
-                                    ((ratio - 1) - logratio).mean().cpu().numpy().item()
-                                )
-                            if (
-                                self.kl_cutoff is not None
-                                and approx_kl > self.kl_cutoff
-                            ):
-                                pi_coef = 0
-
-                            loss = (
-                                pi_coef * pi_loss
-                                + self.ent_coef * entropy_loss
-                                + (vf_coef * v_loss).sum()
-                            )
-
-                            if self.teacher_kl_loss_coef:
-                                assert self.teacher_kl_loss_fn
-                                assert (
-                                    mb_teacher_logprobs is not None
-                                ), "No teacher logprobs"
-                                teacher_kl_loss = self.teacher_kl_loss_fn(
-                                    new_logprobs,
-                                    mb_teacher_logprobs,
-                                    (
-                                        ratio
-                                        if self.teacher_loss_importance_sampling
-                                        else None
-                                    ),
-                                )
-                                additional_losses["teacher_kl_loss"] = (
-                                    teacher_kl_loss.item()
-                                )
-                                loss += self.teacher_kl_loss_coef * teacher_kl_loss
-
-                                loss /= minibatches_per_step
-                            loss.backward()
-                            if mb_idx % minibatches_per_step == 0:
-                                grad_norms.append(self.optimizer_step())
-
-                            with torch.no_grad():
-                                clipped_frac = (
-                                    ((ratio - 1).abs() > pi_clip)
-                                    .float()
-                                    .mean()
-                                    .cpu()
-                                    .numpy()
-                                    .item()
-                                )
-                                val_clipped_frac = (
-                                    ((new_values - mb_values).abs() > v_clip)
-                                    .float()
-                                    .mean(0)
-                                    .cpu()
-                                    .numpy()
-                                    if v_clip is not None
-                                    else np.zeros(v_loss.shape)
-                                )
-
-                            step_stats.append(
-                                TrainStepStats(
-                                    loss.item(),
-                                    pi_loss.item(),
-                                    v_loss.detach().float().cpu().numpy(),
-                                    entropy_loss.item(),
-                                    approx_kl,
-                                    clipped_frac,
-                                    val_clipped_frac,
-                                    additional_losses,
-                                )
-                            )
+                        )
                     if mb_idx % minibatches_per_step != 0:
                         grad_norms.append(self.optimizer_step())
 
@@ -397,9 +386,19 @@ class APPO(Algorithm):
             train_stats.write_to_tensorboard(self.tb_writer)
 
             end_time = perf_counter()
+            steps_per_second = rollout_steps_elapsed / max(end_time - start_time, 1e-9)
             self.tb_writer.add_scalar(
                 "train/steps_per_second",
-                rollout_steps_elapsed / (end_time - start_time),
+                steps_per_second,
+            )
+            logging.info(
+                "Update: steps=%s/%s | rollout_steps=%s | %.1f steps/s | epochs=%.2f | %s",
+                timesteps_elapsed,
+                train_timesteps,
+                rollout_steps_elapsed,
+                steps_per_second,
+                n_epochs,
+                train_stats,
             )
 
             if callbacks:
@@ -414,7 +413,6 @@ class APPO(Algorithm):
                     )
                     break
             rollouts = next_rollouts
-            gc.collect()
         return self
 
     def optimizer_step(self) -> float:

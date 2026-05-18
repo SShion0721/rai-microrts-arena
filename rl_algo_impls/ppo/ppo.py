@@ -1,4 +1,3 @@
-import gc
 import logging
 import warnings
 from dataclasses import asdict, dataclass
@@ -87,9 +86,15 @@ class TrainStats:
     def __repr__(self) -> str:
         def round_list_or_float(v: Union[float, np.ndarray], ndigits: int) -> str:
             if isinstance(v, np.ndarray):
-                return "[" + ", ".join(round(a, ndigits) for a in v) + "]"
+                return (
+                    "["
+                    + ", ".join(
+                        str(round(float(a), ndigits)) for a in v.flatten()
+                    )
+                    + "]"
+                )
             else:
-                return str(round(v, ndigits))
+                return str(round(float(v), ndigits))
 
         return " | ".join(
             [
@@ -100,6 +105,8 @@ class TrainStats:
                 f"Apx KL Div: {round(self.approx_kl, 2)}",
                 f"Clip Frac: {round(self.clipped_frac, 2)}",
                 f"Val Clip Frac: {round_list_or_float(self.val_clipped_frac, 2)}",
+                f"Expl Var: {round(self.explained_var, 3)}",
+                f"Grad Norm: {round(self.grad_norm, 3)}",
             ]
         )
 
@@ -236,7 +243,6 @@ class PPO(Algorithm):
             learner_data_store_view.submit_learner_update(
                 LearnerDataStoreViewUpdate(self.policy, self, timesteps_elapsed)
             )
-            gc.collect()
             if not should_continue:
                 break
         return self
@@ -277,8 +283,6 @@ class PPO(Algorithm):
                 "Only the last rollout will be used"
             )
         r = rollouts[-1]
-
-        gc.collect()
         timesteps_elapsed += r.total_steps
 
         step_stats = []
@@ -510,9 +514,18 @@ class PPO(Algorithm):
 
         end_time = perf_counter()
         rollout_steps = r.total_steps
+        steps_per_second = rollout_steps / max(end_time - start_time, 1e-9)
         self.tb_writer.add_scalar(
             "train/steps_per_second",
-            rollout_steps / (end_time - start_time),
+            steps_per_second,
+        )
+        logging.info(
+            "Update: steps=%s/%s | rollout_steps=%s | %.1f steps/s | %s",
+            timesteps_elapsed,
+            self._train_timesteps,
+            rollout_steps,
+            steps_per_second,
+            train_stats,
         )
 
         if callbacks:

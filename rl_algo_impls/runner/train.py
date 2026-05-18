@@ -51,12 +51,23 @@ from rl_algo_impls.wrappers.vector_wrapper import find_wrapper
 
 
 def train(args: TrainArgs):
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        force=True,
+    )
     logging.info(args)
     hyperparams = load_hyperparams(args.algo, args.env)
     logging.info(hyperparams)
     gpu_ids = initialize_cuda_devices(args, hyperparams)
     config = Config(args, hyperparams, os.getcwd(), gpu_ids=gpu_ids)
+    logging.info(
+        "Starting run %s for %s timesteps; TensorBoard dir: %s",
+        config.run_name(),
+        config.n_timesteps,
+        config.tensorboard_summary_path,
+    )
     maybe_init_ray(config)
 
     if config.process_mode == "sync":
@@ -197,6 +208,7 @@ def train(args: TrainArgs):
         )
     log_dict.update(asdict(hyperparams))
     log_dict.update(vars(args))
+    os.makedirs(config.runs_dir, exist_ok=True)
     with open(config.logs_path, "a") as f:
         yaml.dump({config.run_name(): log_dict}, f)
 

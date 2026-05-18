@@ -9,7 +9,13 @@ from rl_algo_impls.rollout.rollout_dataloader import RolloutDataset
 from rl_algo_impls.runner.config import Config
 from rl_algo_impls.shared.actor.gridnet import ValueDependentMask
 from rl_algo_impls.shared.gae import compute_advantages
-from rl_algo_impls.shared.tensor_utils import TDN, NumOrArray, NumpyOrDict, TensorOrDict, numpy_to_tensor
+from rl_algo_impls.shared.tensor_utils import (
+    TDN,
+    NumOrArray,
+    NumpyOrDict,
+    TensorOrDict,
+    numpy_to_tensor,
+)
 
 ACBCBatchSelf = TypeVar("ACBCBatchSelf", bound="ACBCBatch")
 
@@ -144,10 +150,11 @@ class ACBCRollout(Rollout):
         batch = self.batch(
             torch.device("cpu") if self.full_batch_off_accelerator else device
         )
+        index_device = batch.obs.device
         b_idxs = (
-            torch.randperm(self.total_steps)
+            torch.randperm(self.total_steps, device=index_device)
             if shuffle
-            else torch.arange(self.total_steps)
+            else torch.arange(self.total_steps, device=index_device)
         )
         for i in range(0, self.total_steps, batch_size):
             mb_idxs = b_idxs[i : i + batch_size]

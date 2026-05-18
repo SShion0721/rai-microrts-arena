@@ -59,7 +59,7 @@ def tensor_to_numpy(t: TensorOrDict) -> NumpyOrDict:
 
 def numpy_to_tensor(a: NumpyOrDict, device: torch.device) -> TensorOrDict:
     def to_tensor_fn(_a: np.ndarray) -> torch.Tensor:
-        return torch.as_tensor(_a).to(device)
+        return torch.as_tensor(_a, device=device)
 
     if isinstance(a, dict):
         return {k: to_tensor_fn(v) for k, v in a.items()}

@@ -427,7 +427,7 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         assert isinstance(obs, np.ndarray)
         o = self._as_tensor(obs)
         assert isinstance(o, torch.Tensor)
-        with torch.no_grad():
+        with torch.inference_mode():
             v = self.network.value(o)
         return v.cpu().numpy()
 
@@ -436,7 +436,7 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         o = self._as_tensor(obs)
         assert isinstance(o, torch.Tensor)
         a_masks = self._as_tensor(action_masks) if action_masks is not None else None
-        with torch.no_grad():
+        with torch.inference_mode():
             (pi, _, _), v = self.network.distribution_and_value(o, action_masks=a_masks)
             a = pi.sample()
             logp_a = pi.log_prob(a)
@@ -456,7 +456,7 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         o = self._as_tensor(obs)
         a = self._as_tensor(actions)
         a_masks = self._as_tensor(action_masks) if action_masks is not None else None
-        with torch.no_grad():
+        with torch.inference_mode():
             (_, logp_a, _), _ = self.network(o, a, action_masks=a_masks)
         return logp_a.cpu().numpy()
 
@@ -473,7 +473,7 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
             a_masks = (
                 self._as_tensor(action_masks) if action_masks is not None else None
             )
-            with torch.no_grad():
+            with torch.inference_mode():
                 (pi, _, _), _ = self.network.distribution_and_value(
                     o, action_masks=a_masks
                 )

@@ -1,4 +1,5 @@
 import logging
+from time import perf_counter
 from typing import Dict, Optional, Type
 
 import numpy as np
@@ -188,8 +189,22 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
         self.update_rollout_params(rollout_params)
         log_scalars(self.tb_writer, "charts", rollout_params)
 
+        rollout_start = perf_counter()
+        logging.info(
+            "Collecting rollout: steps=%s | n_steps=%s | n_envs=%s",
+            timesteps_elapsed,
+            self.n_steps,
+            self.vec_env.num_envs,
+        )
         next_values = self._rollout(policy, output_next_values=True)
         assert next_values is not None
+        logging.info(
+            "Collected rollout: steps=%s -> %s | %.1f env-steps/s",
+            timesteps_elapsed,
+            timesteps_elapsed + self.n_steps * self.vec_env.num_envs,
+            (self.n_steps * self.vec_env.num_envs)
+            / max(perf_counter() - rollout_start, 1e-9),
+        )
 
         self._reset_envs(
             self.num_envs_reset_every_rollout,

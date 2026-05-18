@@ -12,11 +12,17 @@ import wandb
 from rl_algo_impls.runner.config import Config, TrainArgs
 
 
+def wandb_enabled(args: TrainArgs) -> bool:
+    return bool(args.wandb_project_name) and os.environ.get(
+        "WANDB_MODE", ""
+    ).lower() != "disabled"
+
+
 @ray.remote
 class SummaryWriterActor:
     def __init__(self, config: Config, args: TrainArgs):
         self.config = config
-        self.wandb_enabled = bool(args.wandb_project_name)
+        self.wandb_enabled = wandb_enabled(args)
         if self.wandb_enabled:
             wandb.tensorboard.patch(
                 root_logdir=config.tensorboard_summary_path, pytorch=True

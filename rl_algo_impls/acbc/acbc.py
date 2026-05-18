@@ -160,15 +160,23 @@ class ACBC(Algorithm):
             explained_var = (
                 np.nan if var_y == 0 else 1 - np.var(r.y_true - r.y_pred).item() / var_y
             )
-            TrainStats(step_stats, explained_var, grad_norms).write_to_tensorboard(
-                self.tb_writer
-            )
+            train_stats = TrainStats(step_stats, explained_var, grad_norms)
+            train_stats.write_to_tensorboard(self.tb_writer)
 
             end_time = perf_counter()
             rollout_steps = r.total_steps
+            steps_per_second = rollout_steps / max(end_time - start_time, 1e-9)
             self.tb_writer.add_scalar(
                 "train/steps_per_second",
-                rollout_steps / (end_time - start_time),
+                steps_per_second,
+            )
+            logging.info(
+                "Update: steps=%s/%s | rollout_steps=%s | %.1f steps/s | %s",
+                timesteps_elapsed,
+                train_timesteps,
+                rollout_steps,
+                steps_per_second,
+                train_stats,
             )
 
             if callbacks:
