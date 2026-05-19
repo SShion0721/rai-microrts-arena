@@ -39,6 +39,9 @@ from rl_algo_impls.shared.policy.actor_critic_network.grid2seq_transformer impor
 from rl_algo_impls.shared.policy.actor_critic_network.hybrid_entity_grid import (
     HybridEntityGridActorCriticNetwork,
 )
+from rl_algo_impls.shared.policy.actor_critic_network.hierarchical_hybrid_entity_grid import (
+    HierarchicalHybridEntityGridNetwork,
+)
 from rl_algo_impls.shared.policy.actor_critic_network.sacus import (
     SplitActorCriticUShapedNetwork,
 )
@@ -163,6 +166,9 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         value_output_gain: float = 1.0,
         feature_mask: Optional[List[int]] = None,
         critic_neck_pooling: str = "mean",
+        memory_kwargs: Optional[Dict[str, Any]] = None,
+        region_tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+        hierarchical_action_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> None:
         super().__init__(env_spaces, **kwargs)
@@ -293,6 +299,37 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
                 actor_head_kernel_size=actor_head_kernel_size,
                 value_output_gain=value_output_gain,
             )
+        elif actor_head_style == "hierarchical_hybrid_entity_grid":
+            assert action_plane_space is not None
+            assert normalization is not None
+            self.network = HierarchicalHybridEntityGridNetwork(
+                single_observation_space,
+                single_action_space,
+                action_plane_space,
+                init_layers_orthogonal=init_layers_orthogonal,
+                cnn_layers_init_orthogonal=cnn_layers_init_orthogonal,
+                channels_per_level=channels_per_level,
+                strides_per_level=strides_per_level,
+                deconv_strides_per_level=deconv_strides_per_level,
+                encoder_residual_blocks_per_level=encoder_residual_blocks_per_level,
+                decoder_residual_blocks_per_level=decoder_residual_blocks_per_level,
+                increment_kernel_size_on_down_conv=increment_kernel_size_on_down_conv,
+                encoder_embed_dim=encoder_embed_dim,
+                encoder_attention_heads=encoder_attention_heads,
+                encoder_feed_forward_dim=encoder_feed_forward_dim,
+                encoder_layers=encoder_layers,
+                hidden_critic_dims=hidden_critic_dims,
+                num_additional_critics=num_additional_critics,
+                additional_critic_activation_functions=additional_critic_activation_functions,
+                output_activation_fn=output_activation_fn,
+                subaction_mask=subaction_mask,
+                normalization=normalization,
+                actor_head_kernel_size=actor_head_kernel_size,
+                value_output_gain=value_output_gain,
+                memory_kwargs=memory_kwargs,
+                region_tokenizer_kwargs=region_tokenizer_kwargs,
+                hierarchical_action_kwargs=hierarchical_action_kwargs,
+            )
         elif actor_head_style == "grid2seq_transformer":
             assert action_plane_space is not None
             assert normalization is not None
@@ -394,8 +431,18 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         obs: torch.Tensor,
         action: torch.Tensor,
         action_masks: Optional[torch.Tensor] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[torch.Tensor] = None,
     ) -> ACForward:
-        (_, logp_a, entropy), v = self.network(obs, action, action_masks=action_masks)
+        acn_forward = self.network(
+            obs,
+            action,
+            action_masks=action_masks,
+            memory_state=memory_state,
+            episode_starts=episode_starts,
+        )
+        _, logp_a, entropy = acn_forward.pi_forward
+        v = acn_forward.v
 
         assert logp_a is not None
         assert entropy is not None
@@ -406,6 +453,8 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         obs: torch.Tensor,
         action: torch.Tensor,
         action_masks: Optional[torch.Tensor] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[torch.Tensor] = None,
     ) -> ACForward:
         """Forward pass with gradient checkpointing to reduce memory.
 
@@ -414,30 +463,79 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         """
         from torch.utils.checkpoint import checkpoint
 
+        if memory_state is not None or episode_starts is not None:
+            return self.forward(
+                obs,
+                action,
+                action_masks=action_masks,
+                memory_state=memory_state,
+                episode_starts=episode_starts,
+            )
+
         def custom_forward(o, a, m):
-            (_, lp, ent), val = self.network(o, a, action_masks=m)
-            return lp, ent, val
+            acn_forward = self.network(
+                o,
+                a,
+                action_masks=m,
+            )
+            _, lp, ent = acn_forward.pi_forward
+            return lp, ent, acn_forward.v
 
         logp_a, entropy, v = checkpoint(
-            custom_forward, obs, action, action_masks, use_reentrant=False
+            custom_forward,
+            obs,
+            action,
+            action_masks,
+            use_reentrant=False,
         )
         return ACForward(logp_a, entropy, v)
 
-    def value(self, obs: ObsType) -> np.ndarray:
+    def initial_memory_state(
+        self, batch_size: int, device: Optional[Any] = None
+    ) -> Optional[Any]:
+        torch_device = torch.device(device) if device is not None else self.device
+        memory_state = self.network.initial_memory_state(batch_size, torch_device)
+        return self._memory_to_numpy(memory_state)
+
+    def value(self, obs: ObsType, memory_state: Optional[Any] = None) -> np.ndarray:
         assert isinstance(obs, np.ndarray)
         o = self._as_tensor(obs)
         assert isinstance(o, torch.Tensor)
         with torch.inference_mode():
-            v = self.network.value(o)
+            if getattr(self.network, "uses_memory", False):
+                v = self.network.value(
+                    o,
+                    memory_state=self._memory_as_tensor(memory_state),
+                )
+            else:
+                v = self.network.value(o)
         return v.cpu().numpy()
 
-    def step(self, obs: ObsType, action_masks: Optional[NumpyOrDict] = None) -> Step:
+    def step(
+        self,
+        obs: ObsType,
+        action_masks: Optional[NumpyOrDict] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[np.ndarray] = None,
+    ) -> Step:
         assert isinstance(obs, np.ndarray)
         o = self._as_tensor(obs)
         assert isinstance(o, torch.Tensor)
         a_masks = self._as_tensor(action_masks) if action_masks is not None else None
+        starts = (
+            self._as_tensor(episode_starts).bool()
+            if episode_starts is not None
+            else None
+        )
         with torch.inference_mode():
-            (pi, _, _), v = self.network.distribution_and_value(o, action_masks=a_masks)
+            acn_forward = self.network.distribution_and_value(
+                o,
+                action_masks=a_masks,
+                memory_state=self._memory_as_tensor(memory_state),
+                episode_starts=starts,
+            )
+            pi, _, _ = acn_forward.pi_forward
+            v = acn_forward.v
             a = pi.sample()
             logp_a = pi.log_prob(a)
 
@@ -445,19 +543,39 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
         clamped_a_np = clamp_actions(
             a_np, self.env_spaces.single_action_space, self.squash_output
         )
-        return Step(a_np, v.cpu().numpy(), logp_a.cpu().numpy(), clamped_a_np)
+        return Step(
+            a_np,
+            v.cpu().numpy(),
+            logp_a.cpu().numpy(),
+            clamped_a_np,
+            self._memory_to_numpy(acn_forward.next_memory_state),
+        )
 
     def logprobs(
         self,
         obs: np.ndarray,
         actions: NumpyOrDict,
         action_masks: Optional[NumpyOrDict] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         o = self._as_tensor(obs)
         a = self._as_tensor(actions)
         a_masks = self._as_tensor(action_masks) if action_masks is not None else None
+        starts = (
+            self._as_tensor(episode_starts).bool()
+            if episode_starts is not None
+            else None
+        )
         with torch.inference_mode():
-            (_, logp_a, _), _ = self.network(o, a, action_masks=a_masks)
+            acn_forward = self.network(
+                o,
+                a,
+                action_masks=a_masks,
+                memory_state=self._memory_as_tensor(memory_state),
+                episode_starts=starts,
+            )
+            _, logp_a, _ = acn_forward.pi_forward
         return logp_a.cpu().numpy()
 
     def act(
@@ -474,9 +592,10 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
                 self._as_tensor(action_masks) if action_masks is not None else None
             )
             with torch.inference_mode():
-                (pi, _, _), _ = self.network.distribution_and_value(
+                acn_forward = self.network.distribution_and_value(
                     o, action_masks=a_masks
                 )
+                pi, _, _ = acn_forward.pi_forward
                 a = pi.mode
             return clamp_actions(
                 tensor_to_numpy(a),
@@ -547,3 +666,31 @@ class ActorCritic(OnPolicy, Generic[ObsType]):
 
     def unfreeze(self) -> None:
         self.network.unfreeze()
+
+    def _memory_as_tensor(self, memory_state: Optional[Any]) -> Optional[Any]:
+        if memory_state is None:
+            return None
+        if isinstance(memory_state, torch.Tensor):
+            return memory_state.to(self.device)
+        if isinstance(memory_state, np.ndarray):
+            return torch.as_tensor(memory_state, device=self.device)
+        if isinstance(memory_state, dict):
+            return {k: self._memory_as_tensor(v) for k, v in memory_state.items()}
+        if isinstance(memory_state, tuple):
+            return tuple(self._memory_as_tensor(v) for v in memory_state)
+        if isinstance(memory_state, list):
+            return [self._memory_as_tensor(v) for v in memory_state]
+        return memory_state
+
+    def _memory_to_numpy(self, memory_state: Optional[Any]) -> Optional[Any]:
+        if memory_state is None:
+            return None
+        if isinstance(memory_state, torch.Tensor):
+            return memory_state.detach().cpu().numpy()
+        if isinstance(memory_state, dict):
+            return {k: self._memory_to_numpy(v) for k, v in memory_state.items()}
+        if isinstance(memory_state, tuple):
+            return tuple(self._memory_to_numpy(v) for v in memory_state)
+        if isinstance(memory_state, list):
+            return [self._memory_to_numpy(v) for v in memory_state]
+        return memory_state

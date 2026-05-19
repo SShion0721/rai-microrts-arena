@@ -20,6 +20,9 @@ class GraphDINOConfig:
     attention_heads: int = 4
     teacher_momentum: float = 0.996
     temperature: float = 0.1
+    entity_reconstruction_weight: float = 0.0
+    region_reconstruction_weight: float = 0.0
+    temporal_contrastive_weight: float = 0.0
 
 
 class GraphDINOEncoder(nn.Module):
@@ -50,6 +53,10 @@ class GraphDINOEncoder(nn.Module):
             [config.embed_dim, config.hidden_dim, config.projection_dim],
             nn.GELU,
         )
+        self.reconstruction_head = mlp(
+            [config.embed_dim, config.hidden_dim, config.input_dim],
+            nn.GELU,
+        )
 
     def forward(
         self, nodes: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None
@@ -59,13 +66,18 @@ class GraphDINOEncoder(nn.Module):
         pooled = masked_mean(x, key_padding_mask)
         return x, self.projector(pooled)
 
+    def reconstruct(self, encoded_nodes: torch.Tensor) -> torch.Tensor:
+        return self.reconstruction_head(encoded_nodes)
+
 
 class GraphDINOLoss(nn.Module):
     def __init__(self, temperature: float = 0.1) -> None:
         super().__init__()
         self.temperature = temperature
 
-    def forward(self, student_projection: torch.Tensor, teacher_projection: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, student_projection: torch.Tensor, teacher_projection: torch.Tensor
+    ) -> torch.Tensor:
         student_logp = F.log_softmax(student_projection / self.temperature, dim=-1)
         teacher_p = F.softmax(teacher_projection.detach() / self.temperature, dim=-1)
         return -(teacher_p * student_logp).sum(dim=-1).mean()
@@ -90,11 +102,41 @@ class GraphDINOPair(nn.Module):
         teacher_nodes: torch.Tensor,
         student_key_padding_mask: Optional[torch.Tensor] = None,
         teacher_key_padding_mask: Optional[torch.Tensor] = None,
+        reconstruction_targets: Optional[torch.Tensor] = None,
+        reconstruction_mask: Optional[torch.Tensor] = None,
+        next_student_projection: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        _, student_projection = self.student(student_nodes, student_key_padding_mask)
+        student_encoded, student_projection = self.student(
+            student_nodes, student_key_padding_mask
+        )
         with torch.no_grad():
-            _, teacher_projection = self.teacher(teacher_nodes, teacher_key_padding_mask)
-        return self.loss(student_projection, teacher_projection)
+            _, teacher_projection = self.teacher(
+                teacher_nodes, teacher_key_padding_mask
+            )
+        loss = self.loss(student_projection, teacher_projection)
+        if (
+            reconstruction_targets is not None
+            and reconstruction_mask is not None
+            and self.config.entity_reconstruction_weight > 0
+        ):
+            reconstructed = self.student.reconstruct(student_encoded)
+            mask = reconstruction_mask.unsqueeze(-1).to(dtype=torch.bool)
+            if mask.any():
+                loss = loss + self.config.entity_reconstruction_weight * F.mse_loss(
+                    reconstructed[mask.expand_as(reconstructed)],
+                    reconstruction_targets[mask.expand_as(reconstruction_targets)],
+                )
+        if (
+            next_student_projection is not None
+            and self.config.temporal_contrastive_weight > 0
+        ):
+            loss = loss + self.config.temporal_contrastive_weight * (
+                1
+                - F.cosine_similarity(
+                    student_projection, next_student_projection.detach(), dim=-1
+                ).mean()
+            )
+        return loss
 
     @torch.no_grad()
     def update_teacher(self) -> None:
@@ -107,7 +149,9 @@ class GraphDINOPair(nn.Module):
             )
 
 
-def masked_mean(x: torch.Tensor, key_padding_mask: Optional[torch.Tensor]) -> torch.Tensor:
+def masked_mean(
+    x: torch.Tensor, key_padding_mask: Optional[torch.Tensor]
+) -> torch.Tensor:
     if key_padding_mask is None:
         return x.mean(dim=1)
     valid = (~key_padding_mask).unsqueeze(-1).to(dtype=x.dtype)

@@ -394,10 +394,18 @@ class MapSizePolicyPicker(Policy, Generic[ObsType]):
         )
         return actions
 
-    def value(self, obs: ObsType) -> np.ndarray:
+    def value(self, obs: ObsType, memory_state=None) -> np.ndarray:
+        del memory_state
         raise NotImplementedError
 
-    def step(self, obs: ObsType, action_masks: Optional[NumpyOrDict] = None) -> Step:
+    def step(
+        self,
+        obs: ObsType,
+        action_masks: Optional[NumpyOrDict] = None,
+        memory_state=None,
+        episode_starts: Optional[np.ndarray] = None,
+    ) -> Step:
+        del memory_state, episode_starts
         raise NotImplementedError
 
     def logprobs(
@@ -405,5 +413,8 @@ class MapSizePolicyPicker(Policy, Generic[ObsType]):
         obs: ObsType,
         actions: NumpyOrDict,
         action_masks: Optional[NumpyOrDict] = None,
+        memory_state=None,
+        episode_starts: Optional[np.ndarray] = None,
     ) -> np.ndarray:
+        del memory_state, episode_starts
         raise NotImplementedError

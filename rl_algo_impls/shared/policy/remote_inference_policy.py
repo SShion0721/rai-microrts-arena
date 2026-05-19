@@ -135,12 +135,21 @@ class RemoteInferencePolicy(AbstractPolicy, Generic[ObsType]):
         # No-op because we don't want to train the policy remotely.
         return self
 
-    def value(self, obs: ObsType) -> np.ndarray:
+    def value(self, obs: ObsType, memory_state: Optional[Any] = None) -> np.ndarray:
+        del memory_state
         return ray.get(self.assigned_policy_actor.value.remote(self.policy_id, obs))
 
-    def step(self, obs: ObsType, action_masks: Optional["NumpyOrDict"] = None) -> Step:
+    def step(
+        self,
+        obs: ObsType,
+        action_masks: Optional["NumpyOrDict"] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[np.ndarray] = None,
+    ) -> Step:
         return ray.get(
-            self.assigned_policy_actor.step.remote(self.policy_id, obs, action_masks)
+            self.assigned_policy_actor.step.remote(
+                self.policy_id, obs, action_masks, memory_state, episode_starts
+            )
         )
 
     def logprobs(
@@ -148,7 +157,10 @@ class RemoteInferencePolicy(AbstractPolicy, Generic[ObsType]):
         obs: ObsType,
         actions: "NumpyOrDict",
         action_masks: Optional["NumpyOrDict"] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[np.ndarray] = None,
     ) -> np.ndarray:
+        del memory_state, episode_starts
         return ray.get(
             self.assigned_policy_actor.logprobs.remote(
                 self.policy_id, obs, actions, action_masks

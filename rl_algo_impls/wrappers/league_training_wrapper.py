@@ -114,6 +114,21 @@ class LeagueConfig:
 
     # Optional role labels for AlphaStar-style population analysis.
     role_by_policy_idx: Dict[int, str] = field(default_factory=dict)
+    default_role: str = "league"
+    role_sampling_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "main": 1.0,
+            "main_exploiter": 1.25,
+            "tactical_exploiter": 1.15,
+            "map_specialist": 1.1,
+            "frozen_benchmark": 0.5,
+            "league": 1.0,
+        }
+    )
+    map_family_sampling_weights: Dict[str, float] = field(default_factory=dict)
+    forgetting_suite_interval: int = 0
+    forgetting_score_floor: float = 0.45
+    recent_result_window: int = 1000
 
     # PBT scheduling metadata. The wrapper records this but leaves mutation to callbacks.
     pbt: PBTConfig = field(default_factory=PBTConfig)
@@ -121,6 +136,8 @@ class LeagueConfig:
     def __post_init__(self) -> None:
         if isinstance(self.pbt, dict):
             self.pbt = PBTConfig(**self.pbt)
+        if self.priority_mode not in ("hardest", "closest", "pfsp", "random"):
+            raise ValueError(f"Invalid league priority mode {self.priority_mode}")
 
 
 class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
@@ -164,7 +181,9 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
         self.league_config = league_config or LeagueConfig()
         self._league_stats: Dict[int, LeaguePolicyStats] = {}
         self._matchup_stats: Dict[Tuple[int, int], MatchupStats] = {}
-        self._recent_results: Deque[Tuple[int, int, float]] = deque(maxlen=1000)
+        self._recent_results: Deque[Tuple[int, int, float]] = deque(
+            maxlen=max(1, self.league_config.recent_result_window)
+        )
 
         logging.info(
             f"LeagueTrainingWrapper: priority_mode={self.league_config.priority_mode}, "
@@ -173,7 +192,10 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
 
     def swap_policy(self, idx: int, swap_window_size: int = 1) -> None:
         """Override to use prioritized opponent selection instead of random."""
-        if len(self.policies) <= 1 or random.random() < self.league_config.exploration_rate:
+        if (
+            len(self.policies) <= 1
+            or random.random() < self.league_config.exploration_rate
+        ):
             # Fall back to random selection for exploration
             return super().swap_policy(idx, swap_window_size)
 
@@ -241,7 +263,13 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
             learner_score = matchup.score_rate if matchup else 0.5
             # Prioritize policies the learner has not mastered, while keeping
             # cold-start opponents in rotation.
-            weight = max(1.0 - learner_score, 1e-3) ** self.league_config.pfsp_alpha
+            role = self.league_config.role_by_policy_idx.get(
+                policy_idx, self.league_config.default_role
+            )
+            role_weight = self.league_config.role_sampling_weights.get(role, 1.0)
+            weight = (
+                max(1.0 - learner_score, 1e-3) ** self.league_config.pfsp_alpha
+            ) * role_weight
             weights.append(weight)
             candidate_indices.append(policy_idx)
 
@@ -309,9 +337,7 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
                 learner_idx = -1
                 self.track_result(learner_idx, opp_deque_idx, result)
 
-    def track_result(
-        self, policy_idx: int, opponent_idx: int, result: float
-    ) -> None:
+    def track_result(self, policy_idx: int, opponent_idx: int, result: float) -> None:
         """Track a match result between two policies.
 
         Args:
@@ -327,9 +353,7 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
         opponent = self._league_stats[opponent_idx]
         # Simple update: opponent's ELO moves based on result against fixed
         # learner rating of 1500
-        opponent.update_elo(
-            1500.0, result, k=self.league_config.elo_k
-        )
+        opponent.update_elo(1500.0, result, k=self.league_config.elo_k)
         self._matchup_stats.setdefault(
             (policy_idx, opponent_idx), MatchupStats()
         ).update(result)
@@ -337,6 +361,7 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
             (opponent_idx, policy_idx), MatchupStats()
         ).update(1.0 - result)
         self._recent_results.append((policy_idx, opponent_idx, result))
+        self._trim_recent_results()
 
     def step(self, actions: np.ndarray):
         """Override step to track match results for ELO updates."""
@@ -344,9 +369,7 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
 
         # Track results when episodes end
         if self.league_config.auto_track_results:
-            env_info = (
-                list(info) if isinstance(info, (tuple, list)) else info
-            )
+            env_info = list(info) if isinstance(info, (tuple, list)) else info
             if terminations.any() or truncations.any():
                 self._track_results_from_info(env_info)
 
@@ -362,8 +385,7 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
     @property
     def win_rate_table(self) -> Dict[Tuple[int, int], float]:
         return {
-            matchup: stats.score_rate
-            for matchup, stats in self._matchup_stats.items()
+            matchup: stats.score_rate for matchup, stats in self._matchup_stats.items()
         }
 
     def league_snapshot(self) -> Dict[str, Any]:
@@ -374,7 +396,9 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
                     "rating": stats.rating,
                     "matches": stats.matches,
                     "win_rate": stats.win_rate,
-                    "role": self.league_config.role_by_policy_idx.get(idx, "league"),
+                    "role": self.league_config.role_by_policy_idx.get(
+                        idx, self.league_config.default_role
+                    ),
                 }
                 for idx, stats in self.league_standings
             ],
@@ -387,4 +411,31 @@ class LeagueTrainingWrapper(SelfPlayWrapper, Generic[ObsType]):
                 "mutable_hyperparams": self.league_config.pbt.mutable_hyperparams,
                 "exploit_interval_steps": self.league_config.pbt.exploit_interval_steps,
             },
+            "population": {
+                "default_role": self.league_config.default_role,
+                "role_sampling_weights": self.league_config.role_sampling_weights,
+                "map_family_sampling_weights": self.league_config.map_family_sampling_weights,
+                "forgetting_suite_interval": self.league_config.forgetting_suite_interval,
+                "forgetting_score_floor": self.league_config.forgetting_score_floor,
+            },
         }
+
+    def set_policy_role(self, policy_idx: int, role: str) -> None:
+        self.league_config.role_by_policy_idx[policy_idx] = role
+
+    def forgetting_risk(self) -> Dict[int, float]:
+        return {
+            opponent_idx: 1.0 - stats.score_rate
+            for (learner_idx, opponent_idx), stats in self._matchup_stats.items()
+            if learner_idx == -1
+            and stats.matches > 0
+            and stats.score_rate < self.league_config.forgetting_score_floor
+        }
+
+    def _trim_recent_results(self) -> None:
+        if self._recent_results.maxlen == self.league_config.recent_result_window:
+            return
+        self._recent_results = deque(
+            self._recent_results,
+            maxlen=max(1, self.league_config.recent_result_window),
+        )

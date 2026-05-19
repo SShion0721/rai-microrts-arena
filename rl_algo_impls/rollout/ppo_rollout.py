@@ -38,6 +38,9 @@ class PPOBatch(NamedTuple):
     teacher_logprobs: Optional[torch.Tensor]
 
     num_actions: Optional[torch.Tensor] = None
+    episode_starts: Optional[torch.Tensor] = None
+    memory_states: Optional[TensorOrDict] = None
+    sequence_mask: Optional[torch.Tensor] = None
 
     def to(self: PPOBatchSelf, device: torch.device) -> PPOBatchSelf:
         def to_device(t: TDN) -> TDN:
@@ -84,15 +87,27 @@ class PPORollout(Rollout):
         full_batch_off_accelerator: bool = False,
         subaction_mask: Optional[Dict[int, Dict[int, int]]] = None,
         action_plane_space: Optional[MultiDiscrete] = None,
+        memory_states: Optional[NumpyOrDict] = None,
+        sequence_mask: Optional[np.ndarray] = None,
         **kwargs,
     ) -> None:
         super().__init__()
+        self.sequence_shape = episode_starts.shape
         self.obs = flatten_batch_step(obs)
         self.actions = flatten_batch_step(actions)
         self.values = flatten_batch_step(values)
         self.logprobs = logprobs.reshape(-1)
+        self.episode_starts = flatten_batch_step(episode_starts)
         self.action_masks = (
             flatten_batch_step(action_masks) if action_masks is not None else None
+        )
+        self.memory_states = (
+            flatten_batch_step(memory_states) if memory_states is not None else None
+        )
+        self.sequence_mask = (
+            flatten_batch_step(sequence_mask)
+            if sequence_mask is not None
+            else np.ones_like(self.episode_starts, dtype=np.bool_)
         )
         self.full_batch_off_accelerator = full_batch_off_accelerator
 
@@ -186,6 +201,13 @@ class PPORollout(Rollout):
                 if self.num_actions is not None
                 else None
             ),
+            numpy_to_tensor(self.episode_starts, device),
+            (
+                numpy_to_tensor(self.memory_states, device)
+                if self.memory_states is not None
+                else None
+            ),
+            numpy_to_tensor(self.sequence_mask, device),
         )
         return self._batch
 
@@ -204,6 +226,43 @@ class PPORollout(Rollout):
         for i in range(0, self.total_steps, batch_size):
             mb_idxs = b_idxs[i : i + batch_size]
             yield batch[mb_idxs].to(device)
+
+    def sequence_minibatches(
+        self,
+        chunk_length: int,
+        chunks_per_minibatch: int,
+        device: torch.device,
+        shuffle: bool = True,
+    ) -> Iterator[PPOBatch]:
+        if chunk_length <= 0:
+            raise ValueError("chunk_length must be positive")
+        if chunks_per_minibatch <= 0:
+            raise ValueError("chunks_per_minibatch must be positive")
+
+        n_steps, n_envs = self.sequence_shape
+        batch = self.batch(
+            torch.device("cpu") if self.full_batch_off_accelerator else device
+        )
+        chunk_indices = []
+        for env_idx in range(n_envs):
+            for start in range(0, n_steps, chunk_length):
+                end = min(start + chunk_length, n_steps)
+                flat = (
+                    torch.arange(start, end, device=batch.obs.device) * n_envs + env_idx
+                )
+                chunk_indices.append(flat)
+
+        order = (
+            torch.randperm(len(chunk_indices))
+            if shuffle
+            else torch.arange(len(chunk_indices))
+        )
+        for start in range(0, len(order), chunks_per_minibatch):
+            selected = [
+                chunk_indices[int(idx)]
+                for idx in order[start : start + chunks_per_minibatch]
+            ]
+            yield batch[torch.cat(selected)].to(device)
 
     def dataset(self, device: torch.device) -> RolloutDataset:
         device = torch.device("cpu") if self.full_batch_off_accelerator else device

@@ -194,17 +194,15 @@ class DPPO(Algorithm):
                     )
 
                     for mb in dataloader:
-                        (
-                            mb_obs,
-                            mb_actions,
-                            mb_action_masks,
-                            mb_logprobs,
-                            mb_values,
-                            mb_adv,
-                            mb_returns,
-                            mb_teacher_logprobs,
-                            _,  # mb_num_actions
-                        ) = mb.to(self.device)
+                        mb = mb.to(self.device)
+                        mb_obs = mb.obs
+                        mb_actions = mb.actions
+                        mb_action_masks = mb.action_masks
+                        mb_logprobs = mb.logprobs
+                        mb_values = mb.values
+                        mb_adv = mb.advantages
+                        mb_returns = mb.returns
+                        mb_teacher_logprobs = mb.teacher_logprobs
                         # reset_noise supported with accelerator wrapped policy
                         # policy.reset_noise(self.batch_size)
 

@@ -127,12 +127,18 @@ class GuidedLearnerRolloutGenerator(SynchronousRolloutGenerator):
 
             for policy in set(p for p in self.policies_by_index):
                 policy_matches = [policy == p for p in self.policies_by_index]
-                (p_actions, p_values, p_logprobs, p_clamped_actions) = policy.step(
+                step = policy.step(
                     obs[policy_matches],
-                    action_masks=batch_dict_keys(action_masks[policy_matches])
-                    if action_masks is not None
-                    else None,
+                    action_masks=(
+                        batch_dict_keys(action_masks[policy_matches])
+                        if action_masks is not None
+                        else None
+                    ),
                 )
+                p_actions = step.a
+                p_values = step.v
+                p_logprobs = step.logp_a
+                p_clamped_actions = step.clamped_a
                 policy_indexes.extend(
                     [idx for idx, m in enumerate(policy_matches) if m]
                 )

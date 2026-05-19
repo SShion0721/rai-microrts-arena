@@ -46,7 +46,7 @@ class ReferenceAIRolloutGenerator(SyncStepRolloutGenerator):
         rollout_view = self.data_store_view.update_for_rollout_start()
         if rollout_view is None:
             return None
-        (policy, rollout_params, timesteps_elapsed, _) = rollout_view
+        policy, rollout_params, timesteps_elapsed, _ = rollout_view
         self.tb_writer.on_timesteps_elapsed(timesteps_elapsed)
         self.update_rollout_params(rollout_params)
         log_scalars(self.tb_writer, "charts", rollout_params)
@@ -64,12 +64,10 @@ class ReferenceAIRolloutGenerator(SyncStepRolloutGenerator):
                 set_items(self.action_masks, self.next_action_masks, s)
 
             if self.include_logp:
-                (
-                    _,
-                    self.values[s],
-                    self.logprobs,
-                    step_actions,
-                ) = policy.step(self.next_obs, action_masks=self.next_action_masks)
+                step = policy.step(self.next_obs, action_masks=self.next_action_masks)
+                self.values[s] = step.v
+                self.logprobs = step.logp_a
+                step_actions = step.clamped_a
             else:
                 self.values[s] = policy.value(self.next_obs)
                 step_actions = self.zero_action

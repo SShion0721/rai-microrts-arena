@@ -171,9 +171,7 @@ class APPO(Algorithm):
             shuffle_minibatches = True
             if self.gradient_accumulation:
                 if self.gradient_accumulation is True:
-                    minibatches_per_step = rollouts[0].num_minibatches(
-                        self.batch_size
-                    )
+                    minibatches_per_step = rollouts[0].num_minibatches(self.batch_size)
                     shuffle_minibatches = False
                 else:
                     minibatches_per_step = self.gradient_accumulation
@@ -206,17 +204,15 @@ class APPO(Algorithm):
                     mb_idx = 0
                     for mb in dataloader:
                         mb_idx += 1
-                        (
-                            mb_obs,
-                            mb_actions,
-                            mb_action_masks,
-                            mb_logprobs,
-                            mb_values,
-                            mb_adv,
-                            mb_returns,
-                            mb_teacher_logprobs,
-                            _,  # mb_num_actions
-                        ) = mb.to(self.device)
+                        mb = mb.to(self.device)
+                        mb_obs = mb.obs
+                        mb_actions = mb.actions
+                        mb_action_masks = mb.action_masks
+                        mb_logprobs = mb.logprobs
+                        mb_values = mb.values
+                        mb_adv = mb.advantages
+                        mb_returns = mb.returns
+                        mb_teacher_logprobs = mb.teacher_logprobs
                         self.policy.reset_noise(self.batch_size)
 
                         if self.normalize_advantages_after_scaling:
@@ -290,13 +286,21 @@ class APPO(Algorithm):
 
                         if self.teacher_kl_loss_coef:
                             assert self.teacher_kl_loss_fn
-                            assert mb_teacher_logprobs is not None, "No teacher logprobs"
+                            assert (
+                                mb_teacher_logprobs is not None
+                            ), "No teacher logprobs"
                             teacher_kl_loss = self.teacher_kl_loss_fn(
                                 new_logprobs,
                                 mb_teacher_logprobs,
-                                ratio if self.teacher_loss_importance_sampling else None,
+                                (
+                                    ratio
+                                    if self.teacher_loss_importance_sampling
+                                    else None
+                                ),
                             )
-                            additional_losses["teacher_kl_loss"] = teacher_kl_loss.item()
+                            additional_losses["teacher_kl_loss"] = (
+                                teacher_kl_loss.item()
+                            )
                             loss += self.teacher_kl_loss_coef * teacher_kl_loss
 
                         loss /= minibatches_per_step

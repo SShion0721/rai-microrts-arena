@@ -88,9 +88,7 @@ class TrainStats:
             if isinstance(v, np.ndarray):
                 return (
                     "["
-                    + ", ".join(
-                        str(round(float(a), ndigits)) for a in v.flatten()
-                    )
+                    + ", ".join(str(round(float(a), ndigits)) for a in v.flatten())
                     + "]"
                 )
             else:
@@ -326,17 +324,15 @@ class PPO(Algorithm):
                 self.policy.reset_noise(self.batch_size)
 
                 assert isinstance(mb, PPOBatch)
-                (
-                    mb_obs,
-                    mb_actions,
-                    mb_action_masks,
-                    mb_logprobs,
-                    mb_values,
-                    mb_adv,
-                    mb_returns,
-                    mb_teacher_logprobs,
-                    mb_num_actions,
-                ) = mb
+                mb_obs = mb.obs
+                mb_actions = mb.actions
+                mb_action_masks = mb.action_masks
+                mb_logprobs = mb.logprobs
+                mb_values = mb.values
+                mb_adv = mb.advantages
+                mb_returns = mb.returns
+                mb_teacher_logprobs = mb.teacher_logprobs
+                mb_num_actions = mb.num_actions
 
                 if self.normalize_advantages_after_scaling:
                     if multi_reward_weights is not None:
@@ -362,10 +358,8 @@ class PPO(Algorithm):
 
                 additional_losses = {}
                 if self.gradient_checkpointing:
-                    new_logprobs, entropy, new_values = (
-                        self.policy.forward_checkpoint(
-                            mb_obs, mb_actions, action_masks=mb_action_masks
-                        )
+                    new_logprobs, entropy, new_values = self.policy.forward_checkpoint(
+                        mb_obs, mb_actions, action_masks=mb_action_masks
                     )
                 else:
                     new_logprobs, entropy, new_values = safe_amp_forward(
@@ -391,12 +385,8 @@ class PPO(Algorithm):
                     returns_mean = mb_returns.mean(0, keepdim=True)
                     returns_std = mb_returns.std(0, keepdim=True).clamp(min=1e-8)
                     mb_returns_norm = (mb_returns - returns_mean) / returns_std
-                    new_values_norm = (
-                        new_values - returns_mean
-                    ) / returns_std
-                    mb_values_norm = (
-                        mb_values - returns_mean
-                    ) / returns_std
+                    new_values_norm = (new_values - returns_mean) / returns_std
+                    mb_values_norm = (mb_values - returns_mean) / returns_std
                     v_target = mb_returns_norm
                     v_pred = new_values_norm
                     v_old = mb_values_norm
@@ -405,13 +395,10 @@ class PPO(Algorithm):
                     v_pred = new_values
                     v_old = mb_values
 
-                v_loss_unclipped = self.vf_loss_fn(
-                    v_pred, v_target, reduction="none"
-                )
+                v_loss_unclipped = self.vf_loss_fn(v_pred, v_target, reduction="none")
                 if v_clip is not None:
                     v_loss_clipped = self.vf_loss_fn(
-                        v_old
-                        + torch.clamp(v_pred - v_old, -v_clip, v_clip),
+                        v_old + torch.clamp(v_pred - v_old, -v_clip, v_clip),
                         v_target,
                         reduction="none",
                     )
@@ -450,9 +437,7 @@ class PPO(Algorithm):
 
                 if self.teacher_kl_loss_coef:
                     assert self.teacher_kl_loss_fn
-                    assert (
-                        mb_teacher_logprobs is not None
-                    ), "Teacher logprobs missing"
+                    assert mb_teacher_logprobs is not None, "Teacher logprobs missing"
                     teacher_kl_loss = self.teacher_kl_loss_fn(
                         new_logprobs,
                         mb_teacher_logprobs,
@@ -476,11 +461,7 @@ class PPO(Algorithm):
                         .item()
                     )
                     val_clipped_frac = (
-                        ((v_pred - v_old).abs() > v_clip)
-                        .float()
-                        .mean(0)
-                        .cpu()
-                        .numpy()
+                        ((v_pred - v_old).abs() > v_clip).float().mean(0).cpu().numpy()
                         if v_clip is not None
                         else np.zeros(v_loss.shape)
                     )

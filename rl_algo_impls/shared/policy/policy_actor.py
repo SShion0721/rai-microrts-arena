@@ -102,9 +102,13 @@ class PolicyActor:
         policy_id: str,
         obs: ObsType,
         action_masks: Optional["NumpyOrDict"] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[np.ndarray] = None,
     ) -> Step:
         assert policy_id in self.policies_by_id, f"No policy with id {policy_id}"
-        return self.policies_by_id[policy_id].step(obs, action_masks)
+        return self.policies_by_id[policy_id].step(
+            obs, action_masks, memory_state=memory_state, episode_starts=episode_starts
+        )
 
     def logprobs(
         self,

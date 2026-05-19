@@ -16,9 +16,15 @@ class ReplayMetadata:
     map_hash: str = ""
     learner: str = ""
     opponent: str = ""
+    policy_id: str = ""
+    winner: Optional[int] = None
+    game_length: Optional[int] = None
+    phase_tags: List[str] = field(default_factory=list)
+    event_tags: List[str] = field(default_factory=list)
+    has_action_masks: Optional[bool] = None
     seed: Optional[int] = None
     source: str = ""
-    schema_version: int = 1
+    schema_version: int = 2
     extras: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -66,7 +72,9 @@ class OfflineReplay:
         actions = np.stack([t.action for t in self.transitions])
         rewards = np.stack([np.asarray(t.reward) for t in self.transitions])
         dones = np.asarray([t.done for t in self.transitions], dtype=np.bool_)
-        infos = np.asarray([json.dumps(t.info, sort_keys=True) for t in self.transitions])
+        infos = np.asarray(
+            [json.dumps(t.info, sort_keys=True) for t in self.transitions]
+        )
 
         payload: Dict[str, Any] = {
             "metadata": np.asarray(json.dumps(asdict(self.metadata), sort_keys=True)),
@@ -117,7 +125,9 @@ class OfflineReplay:
         rewards = np.stack([np.asarray(t.reward) for t in self.transitions])
         return {
             "num_transitions": len(self.transitions),
-            "obs_shape": tuple(self.transitions[0].obs.shape) if self.transitions else (),
+            "obs_shape": (
+                tuple(self.transitions[0].obs.shape) if self.transitions else ()
+            ),
             "action_shape": (
                 tuple(self.transitions[0].action.shape) if self.transitions else ()
             ),

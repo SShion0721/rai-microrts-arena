@@ -11,4 +11,7 @@ from rl_algo_impls.shared.policy.actor_critic_network.separate_actor_critic impo
 from rl_algo_impls.shared.policy.actor_critic_network.hybrid_entity_grid import (
     HybridEntityGridActorCriticNetwork,
 )
+from rl_algo_impls.shared.policy.actor_critic_network.hierarchical_hybrid_entity_grid import (
+    HierarchicalHybridEntityGridNetwork,
+)
 from rl_algo_impls.shared.policy.actor_critic_network.unet import UNetActorCriticNetwork

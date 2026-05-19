@@ -19,7 +19,7 @@ def test_extract_entity_state_batch_filters_empty_cells():
     assert batch.edge_index is not None
     assert batch.edge_attr is not None
     assert batch.edge_index.shape == (2, 0)
-    assert batch.edge_attr.shape == (0, 4)
+    assert batch.edge_attr.shape == (0, 9)
 
 
 def test_extract_entity_state_batch_builds_vectorized_radius_edges():
@@ -50,10 +50,10 @@ def test_extract_entity_state_batch_builds_vectorized_radius_edges():
         batch.edge_attr,
         torch.tensor(
             [
-                [0.0, 0.0, 1.0, 1.0],
-                [0.0, 0.0, -1.0, 1.0],
-                [1.0, 1.0, 0.0, 1.0],
-                [1.0, -1.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [1.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             ]
         ),
     )

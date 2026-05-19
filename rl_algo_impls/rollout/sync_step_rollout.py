@@ -1,6 +1,6 @@
 import logging
 from time import perf_counter
-from typing import Dict, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 import numpy as np
 from gymnasium.spaces import Dict as DictSpace
@@ -27,6 +27,25 @@ from rl_algo_impls.shared.tensor_utils import (
 from rl_algo_impls.shared.vec_env.env_spaces import EnvSpaces
 from rl_algo_impls.wrappers.episode_stats_writer import EpisodeStatsWriter
 from rl_algo_impls.wrappers.vector_wrapper import find_wrapper
+
+
+def _stack_memory_states(memory_states: List[Any]) -> Optional[Any]:
+    if not memory_states or any(state is None for state in memory_states):
+        return None
+    first = memory_states[0]
+    if isinstance(first, np.ndarray):
+        return np.stack(memory_states)
+    if isinstance(first, dict):
+        return {
+            key: _stack_memory_states([state[key] for state in memory_states])
+            for key in first
+        }
+    if isinstance(first, tuple):
+        return tuple(
+            _stack_memory_states([state[idx] for state in memory_states])
+            for idx in range(len(first))
+        )
+    return None
 
 
 class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
@@ -116,6 +135,7 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
 
         self.next_obs = np.zeros(step_dim + obs_space.shape, dtype=obs_space.dtype)
         self.next_episode_starts = np.full(step_dim, True, dtype=np.bool_)
+        self.next_memory_state = None
 
         self.obs = np.zeros(epoch_dim + obs_space.shape, dtype=obs_space.dtype)  # type: ignore
         self.rewards = np.zeros(epoch_dim + value_shape, dtype=np.float32)
@@ -124,6 +144,7 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
         self.logprobs = (
             np.zeros(epoch_dim, dtype=np.float32) if self.include_logp else None
         )
+        self.memory_states = None
 
         if isinstance(act_shape, dict):
             assert isinstance(act_space, DictSpace)
@@ -137,11 +158,13 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
     def prepare(self) -> None:
         rollout_view = self.data_store_view.update_for_rollout_start()
         assert rollout_view is not None
-        (policy, rollout_params, timesteps_elapsed, _) = rollout_view
+        policy, rollout_params, timesteps_elapsed, _ = rollout_view
         self.tb_writer.on_timesteps_elapsed(timesteps_elapsed)
         self.update_rollout_params(rollout_params)
 
         self.next_obs, _ = self.vec_env.reset()
+        if hasattr(policy, "initial_memory_state"):
+            self.next_memory_state = policy.initial_memory_state(self.vec_env.num_envs)
         self.next_action_masks = (
             self.get_action_mask() if self.get_action_mask else None
         )
@@ -184,7 +207,7 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
         rollout_view = self.data_store_view.update_for_rollout_start()
         if rollout_view is None:
             return None
-        (policy, rollout_params, timesteps_elapsed, _) = rollout_view
+        policy, rollout_params, timesteps_elapsed, _ = rollout_view
         self.tb_writer.on_timesteps_elapsed(timesteps_elapsed)
         self.update_rollout_params(rollout_params)
         log_scalars(self.tb_writer, "charts", rollout_params)
@@ -229,6 +252,7 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
             full_batch_off_accelerator=self.full_batch_off_accelerator,
             subaction_mask=self.subaction_mask,
             action_plane_space=getattr(self.vec_env, "action_plane_space", None),
+            memory_states=self.memory_states,
         )
 
     def _rollout(
@@ -236,6 +260,7 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
     ) -> Optional[np.ndarray]:
         policy.eval()
         policy.reset_noise()
+        memory_states: List[Any] = []
         for s in range(self.n_steps):
             if self.sde_sample_freq > 0 and s > 0 and s % self.sde_sample_freq == 0:
                 policy.reset_noise()
@@ -244,13 +269,19 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
             self.episode_starts[s] = self.next_episode_starts
             if self.action_masks is not None:
                 set_items(self.action_masks, self.next_action_masks, s)
+            memory_states.append(self.next_memory_state)
 
-            (
-                actions,
-                self.values[s],
-                logprobs,
-                clamped_actions,
-            ) = policy.step(self.next_obs, action_masks=self.next_action_masks)
+            step = policy.step(
+                self.next_obs,
+                action_masks=self.next_action_masks,
+                memory_state=self.next_memory_state,
+                episode_starts=self.next_episode_starts,
+            )
+            actions = step.a
+            self.values[s] = step.v
+            logprobs = step.logp_a
+            clamped_actions = step.clamped_a
+            self.next_memory_state = step.next_memory_state
             if self.logprobs is not None:
                 self.logprobs[s] = logprobs
             set_items(self.actions, actions, s)
@@ -266,7 +297,12 @@ class SyncStepRolloutGenerator(SynchronousRolloutGenerator):
                 self.get_action_mask() if self.get_action_mask else None
             )
 
-        next_values = policy.value(self.next_obs) if output_next_values else None
+        self.memory_states = _stack_memory_states(memory_states)
+        next_values = (
+            policy.value(self.next_obs, memory_state=self.next_memory_state)
+            if output_next_values
+            else None
+        )
         policy.train()
         return next_values
 

@@ -12,6 +12,7 @@ class Step(NamedTuple):
     v: np.ndarray
     logp_a: np.ndarray
     clamped_a: np.ndarray
+    next_memory_state: Optional[Any] = None
 
 
 AbstractPolicySelf = TypeVar("AbstractPolicySelf", bound="AbstractPolicy")
@@ -24,37 +25,41 @@ class AbstractPolicy(ABC, Generic[ObsType]):
         obs: ObsType,
         deterministic: bool = True,
         action_masks: Optional[NumpyOrDict] = None,
-    ) -> np.ndarray:
-        ...
+    ) -> np.ndarray: ...
 
     @abstractmethod
-    def reset_noise(self) -> None:
-        ...
+    def reset_noise(self) -> None: ...
 
     @abstractmethod
-    def save(self, path: str) -> None:
-        ...
+    def save(self, path: str) -> None: ...
 
     @abstractmethod
-    def set_state(self, state: Any) -> None:
-        ...
+    def set_state(self, state: Any) -> None: ...
 
     @abstractmethod
-    def eval(self: AbstractPolicySelf) -> AbstractPolicySelf:
-        ...
+    def eval(self: AbstractPolicySelf) -> AbstractPolicySelf: ...
 
     @abstractmethod
-    def train(self: AbstractPolicySelf, mode: bool = True) -> AbstractPolicySelf:
-        ...
+    def train(self: AbstractPolicySelf, mode: bool = True) -> AbstractPolicySelf: ...
 
     # OnPolicy methods
     @abstractmethod
-    def value(self, obs: ObsType) -> np.ndarray:
-        ...
+    def initial_memory_state(
+        self, batch_size: int, device: Optional[Any] = None
+    ) -> Optional[Any]:
+        return None
 
     @abstractmethod
-    def step(self, obs: ObsType, action_masks: Optional[NumpyOrDict] = None) -> Step:
-        ...
+    def value(self, obs: ObsType, memory_state: Optional[Any] = None) -> np.ndarray: ...
+
+    @abstractmethod
+    def step(
+        self,
+        obs: ObsType,
+        action_masks: Optional[NumpyOrDict] = None,
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[np.ndarray] = None,
+    ) -> Step: ...
 
     @abstractmethod
     def logprobs(
@@ -62,5 +67,6 @@ class AbstractPolicy(ABC, Generic[ObsType]):
         obs: ObsType,
         actions: NumpyOrDict,
         action_masks: Optional[NumpyOrDict] = None,
-    ) -> np.ndarray:
-        ...
+        memory_state: Optional[Any] = None,
+        episode_starts: Optional[np.ndarray] = None,
+    ) -> np.ndarray: ...

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Iterable, List, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
-
 
 DEFAULT_PUBLIC_MAPS: Sequence[str] = (
     "maps/8x8/basesWorkers8x8A.xml",
@@ -32,6 +31,7 @@ class EvaluationSpec:
     games_per_side: int = 50
     time_budget_ms: int = 100
     deterministic: bool = True
+    include_checkpoints: bool = False
 
     @property
     def total_games(self) -> int:
@@ -63,6 +63,37 @@ class WinRateEstimate:
         centre = p + z**2 / (2 * n)
         margin = z * np.sqrt((p * (1 - p) + z**2 / (4 * n)) / n)
         return ((centre - margin) / denom, (centre + margin) / denom)
+
+
+@dataclass(frozen=True)
+class EvaluationMetrics:
+    win_rate: WinRateEstimate
+    inference_ms_per_step: Optional[float] = None
+    env_steps_per_second: Optional[float] = None
+    gpu_utilization: Optional[float] = None
+    policy_lag: Optional[float] = None
+    invalid_action_rate: Optional[float] = None
+    extras: Dict[str, float] = field(default_factory=dict)
+
+    def dashboard_row(self) -> Dict[str, float]:
+        low, high = self.win_rate.wilson_interval()
+        row: Dict[str, float] = {
+            "games": float(self.win_rate.games),
+            "score_rate": self.win_rate.score_rate,
+            "wilson_low": low,
+            "wilson_high": high,
+        }
+        for key, value in {
+            "inference_ms_per_step": self.inference_ms_per_step,
+            "env_steps_per_second": self.env_steps_per_second,
+            "gpu_utilization": self.gpu_utilization,
+            "policy_lag": self.policy_lag,
+            "invalid_action_rate": self.invalid_action_rate,
+        }.items():
+            if value is not None:
+                row[key] = value
+        row.update(self.extras)
+        return row
 
 
 def build_eval_jobs(spec: EvaluationSpec) -> List[dict]:

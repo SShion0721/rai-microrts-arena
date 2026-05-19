@@ -7,6 +7,9 @@ import torch
 
 NO_UNIT_TYPE_IDX = 6
 IN_BOUNDS_IDX = 58
+OWNER_START_IDX = 3
+OWNER_END_IDX = 6
+RESOURCE_NONZERO_IDX = 2
 
 
 @dataclass
@@ -26,7 +29,9 @@ class EntityStateBatch:
             key_padding_mask=self.key_padding_mask.to(device),
             keep_mask=self.keep_mask.to(device),
             n_entities=self.n_entities.to(device),
-            edge_index=self.edge_index.to(device) if self.edge_index is not None else None,
+            edge_index=(
+                self.edge_index.to(device) if self.edge_index is not None else None
+            ),
             edge_attr=self.edge_attr.to(device) if self.edge_attr is not None else None,
         )
 
@@ -55,7 +60,9 @@ def extract_entity_state_batch(
     if obs.ndim == 3:
         obs = obs.unsqueeze(0)
     if obs.ndim != 4:
-        raise ValueError(f"Expected CHW or BCHW observation, got shape {tuple(obs.shape)}")
+        raise ValueError(
+            f"Expected CHW or BCHW observation, got shape {tuple(obs.shape)}"
+        )
 
     batch_size, channels, height, width = obs.shape
     flattened = obs.flatten(2).permute(0, 2, 1).float()
@@ -94,7 +101,9 @@ def extract_entity_state_batch(
         positions[batch_indices, entity_indices] = selected_positions
         key_padding_mask[batch_indices, entity_indices] = False
 
-    edge_index, edge_attr = _build_radius_edges(positions, n_entities, edge_radius)
+    edge_index, edge_attr = _build_radius_edges(
+        positions, nodes, n_entities, edge_radius
+    )
     return EntityStateBatch(
         nodes=nodes,
         positions=positions,
@@ -114,6 +123,7 @@ def _normalize_position(position: torch.Tensor, size: int) -> torch.Tensor:
 
 def _build_radius_edges(
     positions: torch.Tensor,
+    nodes: torch.Tensor,
     n_entities: torch.Tensor,
     edge_radius: Optional[float],
 ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
@@ -124,7 +134,7 @@ def _build_radius_edges(
     if batch_size == 0 or max_entities == 0:
         return (
             torch.empty(2, 0, dtype=torch.long, device=positions.device),
-            torch.empty(0, 4, dtype=positions.dtype, device=positions.device),
+            torch.empty(0, 9, dtype=positions.dtype, device=positions.device),
         )
 
     entity_idx = torch.arange(max_entities, device=positions.device)
@@ -136,27 +146,35 @@ def _build_radius_edges(
     delta = positions.unsqueeze(1) - positions.unsqueeze(2)
     distances = torch.linalg.vector_norm(delta, ord=2, dim=-1)
     edge_mask = (
-        src_valid
-        & dst_valid
-        & not_self.unsqueeze(0)
-        & (distances <= edge_radius)
+        src_valid & dst_valid & not_self.unsqueeze(0) & (distances <= edge_radius)
     )
 
     if not edge_mask.any():
         return (
             torch.empty(2, 0, dtype=torch.long, device=positions.device),
-            torch.empty(0, 4, dtype=positions.dtype, device=positions.device),
+            torch.empty(0, 9, dtype=positions.dtype, device=positions.device),
         )
 
     batch_idx, src_idx, dst_idx = torch.nonzero(edge_mask, as_tuple=True)
     max_entities = positions.shape[1]
     edge_delta = delta[batch_idx, src_idx, dst_idx]
     edge_distance = distances[batch_idx, src_idx, dst_idx].unsqueeze(1)
+    src_nodes = nodes[batch_idx, src_idx]
+    dst_nodes = nodes[batch_idx, dst_idx]
+    same_owner, enemy_owner = _owner_relation_features(src_nodes, dst_nodes)
+    src_resource = _feature_flag(src_nodes, RESOURCE_NONZERO_IDX)
+    dst_resource = _feature_flag(dst_nodes, RESOURCE_NONZERO_IDX)
+    same_unit_type = _same_unit_type(src_nodes, dst_nodes)
     edge_attr = torch.cat(
         (
             batch_idx.to(dtype=positions.dtype).unsqueeze(1),
             edge_delta,
             edge_distance,
+            same_owner.unsqueeze(1),
+            enemy_owner.unsqueeze(1),
+            src_resource.unsqueeze(1),
+            dst_resource.unsqueeze(1),
+            same_unit_type.unsqueeze(1),
         ),
         dim=1,
     )
@@ -166,3 +184,48 @@ def _build_radius_edges(
         ),
         edge_attr,
     )
+
+
+def _feature_flag(nodes: torch.Tensor, feature_idx: int) -> torch.Tensor:
+    if nodes.shape[-1] <= feature_idx:
+        return torch.zeros(nodes.shape[:-1], dtype=nodes.dtype, device=nodes.device)
+    return nodes[..., feature_idx].to(dtype=nodes.dtype)
+
+
+def _owner_relation_features(
+    src_nodes: torch.Tensor, dst_nodes: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if src_nodes.shape[-1] < OWNER_END_IDX or dst_nodes.shape[-1] < OWNER_END_IDX:
+        zeros = torch.zeros(
+            src_nodes.shape[:-1], dtype=src_nodes.dtype, device=src_nodes.device
+        )
+        return zeros, zeros
+    src_owner = src_nodes[..., OWNER_START_IDX:OWNER_END_IDX]
+    dst_owner = dst_nodes[..., OWNER_START_IDX:OWNER_END_IDX]
+    same_owner = (src_owner * dst_owner).sum(dim=-1).clamp(0, 1)
+    src_player = src_owner[..., 1:].sum(dim=-1) > 0
+    dst_player = dst_owner[..., 1:].sum(dim=-1) > 0
+    enemy_owner = (
+        src_player
+        & dst_player
+        & (torch.argmax(src_owner, dim=-1) != torch.argmax(dst_owner, dim=-1))
+    ).to(dtype=src_nodes.dtype)
+    return same_owner, enemy_owner
+
+
+def _same_unit_type(src_nodes: torch.Tensor, dst_nodes: torch.Tensor) -> torch.Tensor:
+    if (
+        src_nodes.shape[-1] <= NO_UNIT_TYPE_IDX
+        or dst_nodes.shape[-1] <= NO_UNIT_TYPE_IDX
+    ):
+        return torch.zeros(
+            src_nodes.shape[:-1], dtype=src_nodes.dtype, device=src_nodes.device
+        )
+    unit_end = min(IN_BOUNDS_IDX, src_nodes.shape[-1], dst_nodes.shape[-1])
+    src_unit = src_nodes[..., NO_UNIT_TYPE_IDX:unit_end]
+    dst_unit = dst_nodes[..., NO_UNIT_TYPE_IDX:unit_end]
+    same = (src_unit * dst_unit).sum(dim=-1) > 0
+    not_empty = (src_nodes[..., NO_UNIT_TYPE_IDX] < 0.5) & (
+        dst_nodes[..., NO_UNIT_TYPE_IDX] < 0.5
+    )
+    return (same & not_empty).to(dtype=src_nodes.dtype)
