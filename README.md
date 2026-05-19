@@ -30,6 +30,9 @@ python train.py --algo ppo --env Microrts-squnet-map16-selfplay --seed 1
 # 新增的实体-网格混合网络实验
 python train.py --algo ppo --env Microrts-hybrid-entity-grid-map16-selfplay --seed 1
 
+# 当前最强研究候选：实体图 + region token + GRU strategic memory
+python train.py --algo ppo --env Microrts-hierarchical-hybrid-memory-map16-selfplay --seed 1
+
 # ACBC 行为克隆预训练，参考 Mayari 等脚本 bot
 python train.py --algo acbc --env Microrts-squnet-d16-128-iMayari --seed 1
 
@@ -80,6 +83,16 @@ rl_algo_impls/
 | `grid2seq_transformer` | 全格点 Transformer | 把所有格子作为 token，长程建模强但大图 token 多。 |
 | `grid2entity_transformer` | 实体 Transformer | 只保留非空实体 token，适合稀疏地图和对象关系。 |
 | `hybrid_entity_grid` | 新增研究线 | SquNet 网格 actor + 实体 Transformer 全局上下文，通过 FiLM 注入网格特征。 |
+| `hierarchical_hybrid_entity_grid` | 当前最强研究候选 | SquNet tactical grid + 实体图 + region token + GRU strategic memory，仍使用 GridNet primitive head 和合法动作 mask。 |
+
+## 当前最强实验
+
+严格说有两个答案：
+
+- **最稳的已验证基线**：`Microrts-squnet-map16-selfplay`。它仍是所有新模块必须打平或超过的 baseline。
+- **最值得投入算力的最强候选**：`Microrts-hierarchical-hybrid-memory-map16-selfplay`。它把本轮重构里已经接通的 entity graph、region token、GRU strategic memory 和 SquNet/GridNet primitive head 放到同一条训练线上，风险比直接上 Mamba/world model 低。
+
+建议固定三组对照一起跑：`Microrts-squnet-map16-selfplay`、`Microrts-hybrid-entity-grid-map16-selfplay`、`Microrts-hierarchical-hybrid-memory-map16-selfplay`。只有 hierarchical 在 8/16/32 eval matrix 上稳定不劣化，再进入 32/64 迁移。
 
 ### 动作头和 mask
 
@@ -194,7 +207,7 @@ self_play_kwargs:
 | `subaction_mask` | 子动作依赖约束，microRTS 强烈建议保留。 |
 | `load_path` / `load_run_path` | 从本地或 wandb checkpoint 初始化。 |
 
-当前新增 hybrid 配置：
+当前新增 hybrid / hierarchical 配置：
 
 ```yaml
 Microrts-hybrid-entity-grid-map16-selfplay:
@@ -208,6 +221,27 @@ Microrts-hybrid-entity-grid-map16-selfplay:
     encoder_feed_forward_dim: 256
     encoder_layers: 2
     actor_head_kernel_size: 3
+
+Microrts-hierarchical-hybrid-memory-map16-selfplay:
+  <<: *microrts-squnet-map16-selfplay
+  policy_hyperparams:
+    <<: *microrts-squnet-map16-policy-defaults
+    actor_head_style: hierarchical_hybrid_entity_grid
+    normalization: layer
+    encoder_embed_dim: 128
+    encoder_attention_heads: 4
+    encoder_feed_forward_dim: 256
+    encoder_layers: 2
+    actor_head_kernel_size: 3
+    memory_kwargs:
+      kind: gru
+      hidden_dim: 256
+      entity_edge_radius: 2.0
+    region_tokenizer_kwargs:
+      kind: heuristic
+    hierarchical_action_kwargs:
+      strategy_latent_dim: 8
+      num_groups: 8
 ```
 
 ### `rollout_hyperparams`
@@ -308,7 +342,7 @@ durations: [0.5, 0.3, 0.2]
 2. **小步确认入口和配置**
 
    ```powershell
-   python train.py --algo ppo --env Microrts-hybrid-entity-grid-map16-selfplay --seed 1
+   python train.py --algo ppo --env Microrts-hierarchical-hybrid-memory-map16-selfplay --seed 1
    ```
 
    第一次不建议直接跑满 `200e6`。可以临时复制一个 debug 配置，把 `n_timesteps` 降到 `1e6`，确认 rollout、loss、eval、checkpoint 都正常。
@@ -350,7 +384,7 @@ python scripts/microrts_eval_matrix.py
 - value loss 很不稳：尝试 `normalize_value_targets: true` 或降低 `vf_coef`。
 - policy KL 暴涨：降低 `learning_rate` 或 `clip_range`，减少 `n_epochs`。
 - 大图太慢：减少 `channels_per_level`、降低 Transformer `encoder_layers`，或用 SquNet 而不是 DoubleCone。
-- 大图不会长程决策：尝试 `hybrid_entity_grid` 或 `grid2entity_transformer`，并从 16/32 图 checkpoint 迁移。
+- 大图不会长程决策：尝试 `hierarchical_hybrid_entity_grid`、`hybrid_entity_grid` 或 `grid2entity_transformer`，并从 16/32 图 checkpoint 迁移。
 - 自博弈过拟合单一风格：增加历史策略池、混入 bot、使用 PFSP/league。
 
 ## 新增模块状态
@@ -361,6 +395,9 @@ python scripts/microrts_eval_matrix.py
 | `pretrain/graphdino.py` | 有 student/teacher 预训练骨架 | 增加 masked entity reconstruction 和真实数据 loader。 |
 | `microrts/entity_state.py` | 可抽取实体 token | 增加更丰富关系边和单位语义特征。 |
 | `hybrid_entity_grid.py` | 已接入 `actor_head_style` | 跑 ablation，比 SquNet/Grid2Entity 胜率和耗时。 |
+| `hierarchical_hybrid_entity_grid.py` | 已接入 memory/entity/region 强候选 | 跑 3 seed eval matrix，确认相对 SquNet/Hybrid 的收益和延迟。 |
+| `policy/memory/strategic_memory.py` | GRU strategic memory 已接入 | 先验证 recurrent PPO/logprob 一致性，再评估 Mamba。 |
+| `microrts/region_state.py` | heuristic region token 已接入 | 做 empty-map/大图 token ablation，后续学习化 tokenizer。 |
 | `microrts/options/` | 有 option API 和合法 fallback | 增加 option-to-primitive 规则与学习式 pointer head。 |
 | `league_training_wrapper.py` | 有 PFSP/PBT 元数据 | 增加真正的 population mutation callback。 |
 

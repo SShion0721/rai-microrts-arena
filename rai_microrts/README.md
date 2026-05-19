@@ -21,6 +21,9 @@ Named after the **RAISocketAI** agent.
 | 10 | Determinism fix | Default False for compile compat | `runner/running_utils.py` |
 | 11 | APPO AMP | Mixed precision for async PPO | `ppo/appo.py` |
 | 12 | League env config | `league_kwargs` in env params | `runner/env_hyperparams.py` |
+| 13 | Memory-aware policy API | Optional rollout memory state for recurrent policies | `shared/policy/actor_critic.py` |
+| 14 | Entity-region hybrid | Entity graph + heuristic region tokens + GridNet head | `shared/policy/actor_critic_network/hierarchical_hybrid_entity_grid.py` |
+| 15 | League roles | Main/exploiter/map-specialist population metadata | `wrappers/league_training_wrapper.py` |
 
 ## Quick start
 
@@ -32,6 +35,16 @@ pip install -e ".[microrts]"
 python train.py --algo ppo --env Microrts-squnet-map16-selfplay --seed 1
 ```
 
+Current strongest research candidate:
+
+```sh
+python train.py --algo ppo --env Microrts-hierarchical-hybrid-memory-map16-selfplay --seed 1
+```
+
+Keep `Microrts-squnet-map16-selfplay` as the proven baseline, and compare it with
+`Microrts-hybrid-entity-grid-map16-selfplay` plus the hierarchical memory run before
+moving to 32/64 maps.
+
 ## Configs
 
 Pre-made YAML in `rai_microrts/configs/`:
@@ -42,6 +55,7 @@ Pre-made YAML in `rai_microrts/configs/`:
 | `squnet_amp.yaml` | Mixed precision only |
 | `squnet_league.yaml` | ELO league training |
 | `squnet_full.yaml` | All features combined |
+| `hierarchical_hybrid_memory_league.yaml` | Strongest research candidate: entity graph + region tokens + GRU strategic memory + league roles |
 
 ## Algo params reference
 

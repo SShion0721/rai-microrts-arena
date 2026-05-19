@@ -4,7 +4,6 @@ from contextlib import contextmanager
 
 import torch
 
-
 AMP_DTYPE_DEFAULT = "bfloat16"
 
 
@@ -77,6 +76,8 @@ def safe_amp_forward(
     obs,
     actions,
     action_masks,
+    memory_state=None,
+    episode_starts=None,
 ):
     """Forward pass with AMP-safe log_prob and entropy for PPO.
 
@@ -86,7 +87,11 @@ def safe_amp_forward(
     """
     with maybe_autocast(autocast_enabled, device, amp_dtype=amp_dtype):
         new_logprobs, entropy, new_values = policy(
-            obs, actions, action_masks=action_masks
+            obs,
+            actions,
+            action_masks=action_masks,
+            memory_state=memory_state,
+            episode_starts=episode_starts,
         )
     if amp_dtype == "float16":
         new_logprobs = new_logprobs.float()

@@ -457,6 +457,32 @@ Microrts-hybrid-entity-grid-map16-selfplay:
     encoder_layers: 2
     actor_head_kernel_size: 3
 
+Microrts-hierarchical-hybrid-memory-map16-selfplay:
+  <<: *microrts-squnet-map16-selfplay
+  policy_hyperparams:
+    <<: *microrts-squnet-map16-policy-defaults
+    actor_head_style: hierarchical_hybrid_entity_grid
+    normalization: layer
+    encoder_embed_dim: 128
+    encoder_attention_heads: 4
+    encoder_feed_forward_dim: 256
+    encoder_layers: 2
+    actor_head_kernel_size: 3
+    memory_kwargs:
+      kind: gru
+      hidden_dim: 256
+      entity_edge_radius: 2.0
+    region_tokenizer_kwargs:
+      kind: heuristic
+    hierarchical_action_kwargs:
+      strategy_latent_dim: 8
+      num_groups: 8
+  algo_hyperparams:
+    <<: *microrts-squnet-map16-algo-defaults
+    batch_size: 3072
+    n_epochs: 2
+    learning_rate: !!float 5e-5
+
 _Microrts-squnet-deep8: &microrts-squnet-deep8
   <<: *microrts-squnet-map16
   policy_hyperparams: &microrts-squnet-deep8-policy-defaults

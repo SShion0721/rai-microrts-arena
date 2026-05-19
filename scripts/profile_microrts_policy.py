@@ -20,6 +20,9 @@ from rl_algo_impls.shared.policy.actor_critic_network.grid2entity_transformer im
 from rl_algo_impls.shared.policy.actor_critic_network.hybrid_entity_grid import (
     HybridEntityGridActorCriticNetwork,
 )
+from rl_algo_impls.shared.policy.actor_critic_network.hierarchical_hybrid_entity_grid import (
+    HierarchicalHybridEntityGridNetwork,
+)
 from rl_algo_impls.shared.policy.actor_critic_network.network import ActorCriticNetwork
 from rl_algo_impls.shared.policy.actor_critic_network.squeeze_unet import (
     SqueezeUnetActorCriticNetwork,
@@ -31,6 +34,7 @@ SUPPORTED_STYLES = (
     "double_cone",
     "grid2entity_transformer",
     "hybrid_entity_grid",
+    "hierarchical_hybrid_entity_grid",
 )
 
 
@@ -121,10 +125,7 @@ def parse_args() -> argparse.Namespace:
 
 def parse_ints(raw: Sequence[str]) -> List[int]:
     values = [
-        int(part.strip())
-        for chunk in raw
-        for part in chunk.split(",")
-        if part.strip()
+        int(part.strip()) for chunk in raw for part in chunk.split(",") if part.strip()
     ]
     if not values:
         raise ValueError("Expected at least one integer")
@@ -138,13 +139,17 @@ def build_spaces(map_size: int, channels: int):
         shape=(channels, map_size, map_size),
         dtype=np.float32,
     )
-    action_space = gymnasium.spaces.MultiDiscrete(np.tile(ACTION_VEC, map_size * map_size))
+    action_space = gymnasium.spaces.MultiDiscrete(
+        np.tile(ACTION_VEC, map_size * map_size)
+    )
     action_plane_space = gymnasium.spaces.MultiDiscrete(ACTION_VEC)
     return obs_space, action_space, action_plane_space
 
 
 def build_network(style: str, args: argparse.Namespace) -> ActorCriticNetwork:
-    obs_space, action_space, action_plane_space = build_spaces(args.map_size, args.channels)
+    obs_space, action_space, action_plane_space = build_spaces(
+        args.map_size, args.channels
+    )
     channels_per_level = parse_ints(args.channels_per_level)
     strides_per_level = [2] * (len(channels_per_level) - 1)
     encoder_blocks = [1] * len(channels_per_level)
@@ -195,6 +200,30 @@ def build_network(style: str, args: argparse.Namespace) -> ActorCriticNetwork:
             encoder_layers=args.encoder_layers,
             normalization="layer",
         )
+    if style == "hierarchical_hybrid_entity_grid":
+        return HierarchicalHybridEntityGridNetwork(
+            obs_space,
+            action_space,
+            action_plane_space,
+            channels_per_level=channels_per_level,
+            strides_per_level=strides_per_level,
+            encoder_residual_blocks_per_level=encoder_blocks,
+            decoder_residual_blocks_per_level=decoder_blocks,
+            encoder_embed_dim=args.encoder_embed_dim,
+            encoder_attention_heads=args.encoder_attention_heads,
+            encoder_feed_forward_dim=args.encoder_feed_forward_dim,
+            encoder_layers=args.encoder_layers,
+            normalization="layer",
+            memory_kwargs={
+                "kind": "gru",
+                "hidden_dim": args.encoder_embed_dim * 2,
+                "entity_edge_radius": 2.0,
+            },
+            hierarchical_action_kwargs={
+                "strategy_latent_dim": 8,
+                "num_groups": 8,
+            },
+        )
     raise ValueError(f"Unsupported style {style}")
 
 
@@ -207,7 +236,9 @@ def synthetic_obs(
     dtype: torch.dtype,
     seed: int,
 ) -> torch.Tensor:
-    obs = torch.zeros(batch_size, channels, map_size, map_size, device=device, dtype=dtype)
+    obs = torch.zeros(
+        batch_size, channels, map_size, map_size, device=device, dtype=dtype
+    )
     obs[:, 58, :, :] = 1
     obs[:, 6, :, :] = 1
 
@@ -226,9 +257,7 @@ def synthetic_obs(
     return obs
 
 
-def action_masks(
-    batch_size: int, map_size: int, device: torch.device
-) -> torch.Tensor:
+def action_masks(batch_size: int, map_size: int, device: torch.device) -> torch.Tensor:
     return torch.ones(
         batch_size,
         map_size * map_size,

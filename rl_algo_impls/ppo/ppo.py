@@ -333,6 +333,8 @@ class PPO(Algorithm):
                 mb_returns = mb.returns
                 mb_teacher_logprobs = mb.teacher_logprobs
                 mb_num_actions = mb.num_actions
+                mb_episode_starts = mb.episode_starts
+                mb_memory_states = mb.memory_states
 
                 if self.normalize_advantages_after_scaling:
                     if multi_reward_weights is not None:
@@ -359,7 +361,11 @@ class PPO(Algorithm):
                 additional_losses = {}
                 if self.gradient_checkpointing:
                     new_logprobs, entropy, new_values = self.policy.forward_checkpoint(
-                        mb_obs, mb_actions, action_masks=mb_action_masks
+                        mb_obs,
+                        mb_actions,
+                        action_masks=mb_action_masks,
+                        memory_state=mb_memory_states,
+                        episode_starts=mb_episode_starts,
                     )
                 else:
                     new_logprobs, entropy, new_values = safe_amp_forward(
@@ -370,6 +376,8 @@ class PPO(Algorithm):
                         mb_obs,
                         mb_actions,
                         mb_action_masks,
+                        memory_state=mb_memory_states,
+                        episode_starts=mb_episode_starts,
                     )
 
                 logratio = new_logprobs - mb_logprobs

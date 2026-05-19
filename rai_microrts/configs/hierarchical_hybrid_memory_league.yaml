@@ -1,0 +1,64 @@
+# Strongest research-candidate config: entity graph + region tokens + GRU strategic memory.
+#
+# Proven baseline is still SquNet until this experiment wins the eval matrix. This
+# overlay keeps the primitive GridNet action head and action mask path intact.
+#
+# Usage:
+#   python train.py --algo ppo --env Microrts-hierarchical-hybrid-memory-map16-selfplay
+
+algo: ppo
+env: Microrts-hierarchical-hybrid-memory-map16-selfplay
+seed: 1
+
+device_hyperparams:
+  set_float32_matmul_precision: high
+  torch_compile: true
+  compile_mode: "reduce-overhead"
+  cudnn_benchmark: true
+  cudnn_allow_tf32: true
+  cuda_matmul_allow_tf32: true
+
+policy_hyperparams:
+  actor_head_style: hierarchical_hybrid_entity_grid
+  normalization: layer
+  encoder_embed_dim: 128
+  encoder_attention_heads: 4
+  encoder_feed_forward_dim: 256
+  encoder_layers: 2
+  actor_head_kernel_size: 3
+  memory_kwargs:
+    kind: gru
+    hidden_dim: 256
+    entity_edge_radius: 2.0
+  region_tokenizer_kwargs:
+    kind: heuristic
+  hierarchical_action_kwargs:
+    strategy_latent_dim: 8
+    num_groups: 8
+
+env_hyperparams:
+  league_kwargs:
+    priority_mode: "pfsp"
+    exploration_rate: 0.1
+    default_role: "main"
+    role_sampling_weights:
+      main: 1.0
+      main_exploiter: 1.25
+      tactical_exploiter: 1.1
+      map_specialist: 1.0
+      frozen_benchmark: 0.75
+    forgetting_suite_interval_steps: 5000000
+    forgetting_win_rate_floor: 0.45
+    recent_result_window: 32
+
+algo_hyperparams:
+  autocast_loss: true
+  autocast_amp_dtype: "bfloat16"
+  normalize_value_targets: true
+  adaptive_entropy: true
+  target_entropy: 1.5
+  clip_range_schedule: "cosine"
+  clip_range_schedule_min: 0.1
+  batch_size: 3072
+  n_epochs: 2
+  learning_rate: !!float 5e-5
